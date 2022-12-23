@@ -590,7 +590,11 @@ namespace Server.MirObjects
 
             if (Leveled)
             {
-                if (Info.Level < Settings.Guild_MembercapList.Count)
+                if (Name == Settings.NewbieGuild)
+                {
+                    Info.MemberCap = 1000;
+                }
+                else if (Info.Level < Settings.Guild_MembercapList.Count)
                 {
                     Info.MemberCap = Settings.Guild_MembercapList[Info.Level];
                 }
