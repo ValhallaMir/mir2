@@ -1,9 +1,5 @@
-﻿using System;
-using System.IO;
+﻿using log4net;
 using System.Reflection;
-using System.Windows.Forms;
-using System.Xml;
-using log4net;
 
 namespace Server.MirForms
 {
@@ -17,7 +13,8 @@ namespace Server.MirForms
         {
             Packet.IsServer = true;
 
-            log4net.Config.XmlConfigurator.Configure();
+            var logRepository = LogManager.GetRepository(Assembly.GetEntryAssembly());
+            log4net.Config.XmlConfigurator.Configure(logRepository, new FileInfo("log4net.config"));
 
             try
             {

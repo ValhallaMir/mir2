@@ -1,29 +1,22 @@
-## The Legend of Mir 2
-The Legend of Mir 2 is a sprite-based isometric three dimensional massively multiplayer online role-playing game. Players have the option of playing different professions. Taoist, healers who use magical abilities to summon pets to assist in battle, poison targets and heal allies. Warriors, who have the highest defense and attack attributes of all classes. Wizards depend on magic and can kill multiple monsters with ease using spells. Assassins have taken over as the primary melee damage dealing class but have much weaker defense attributes than warriors. Archers are a class of great accuracy and strength, using their powerful skills with bows to deal extraordinary damage from range.
+# Legend of Mir 2 - Official Public Crystal Source
 
-## Crystal Source
-The Legend of Mir 2 Crystal Source is a public repository hosted on GitHub that aims to develop a server and game client written in the programming language of C Sharp (C#).
+Visit our forum at [LOMCN](https://www.lomcn.net/forum/forums/crystalm2-files-open-source.633/) for discussions, help, and updates.
 
-## Installation
-1. Install Microsoft Visual Studio with .NET Packages.
-2. Download the latest source (https://github.com/Suprcode/mir2/releases).
-3. Open the project and configure NuGet packages.
+# Useful Links:
 
-## Contributing
-1. Fork the project hosted on GitHub (https://github.com/Suprcode/mir2).
-2. Fix a bug or implement a new feature within your forked source.
-3. Submit a pull request comparing to your forked source (https://github.com/Suprcode/mir2/compare).
+[Build Guide](https://www.lomcn.net/wiki/index.php/Getting_Started) //
+[Wiki](https://www.lomcn.net/wiki/index.php/Crystal) //
+[Databases](https://github.com/Suprcode/Crystal.Database) //
+[Map Editor](https://github.com/Suprcode/Crystal.MapEditor) //
+[Help](https://www.lomcn.net/forum/forums/crystalm2-help.663/) //
+[Tutorials](https://www.lomcn.net/forum/forums/crystalm2-tutorials.634/)
 
-## Guidance
-For further information about server and game files visit the Legend of Mir Wikipedia (https://www.lomcn.org/wiki/index.php/Main_Page).
+# Other Projects:
 
-## Community
-Legend of Mir Community Network (https://www.lomcn.org/forum/forumdisplay.php?633) is a forums website dedicated to everything related to The Legend of Mir. If you have a question related to running or developing a Legend of Mir server this is the best place to ask.
+[Mir 1](https://github.com/JevLOMCN/mir1/) // [Database](https://github.com/Suprcode/Carbon.Database)
 
-## Credits
-- Far (Developer)
-- Jamie (Developer)
-- Public Contributions (https://github.com/Suprcode/mir2/graphs/contributors)
+[Mir 3](https://github.com/Suprcode/Zircon)
 
-## License
-Currently, there's no license for this project.
+[Mir 3D](https://github.com/mir-ethernity/mir-eternal)
+
+[Mir 4](https://github.com/JevLOMCN/mir4-launchers)

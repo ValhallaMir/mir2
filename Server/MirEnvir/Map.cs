@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
-using System.Linq;
-using Server.MirDatabase;
+﻿using Server.MirDatabase;
 using Server.MirObjects;
 using S = ServerPackets;
 
@@ -96,7 +92,7 @@ namespace Server.MirEnvir
                 return 1;
 
             //shanda's 2012 format and one of shandas(wemades) older formats share same header info, only difference is the filesize
-            if ((input[4] == 0x0F) && (input[18] == 0x0D) && (input[19] == 0x0A))
+            if ((input[4] == 0x0F) || (input[4] == 0x03) && (input[18] == 0x0D) && (input[19] == 0x0A))
             {
                 int W = input[0] + (input[1] << 8);
                 int H = input[2] + (input[3] << 8);
@@ -511,7 +507,8 @@ namespace Server.MirEnvir
                 MessageQueue.Enqueue(ex);
             }
 
-            MessageQueue.Enqueue("Failed to Load Map: " + Info.FileName);
+            MessageQueue.Enqueue("Failed to Load Map: " + Info.Title);
+            MessageQueue.Enqueue("Filename: " + Info.FileName);
             return false;
         }
 
@@ -932,7 +929,19 @@ namespace Server.MirEnvir
 
                     monster.Master.Pets.Add(monster);
                     break;
+                case Spell.Stonetrap:
+                    monster = (MonsterObject)data[2];
+                    front = (Point)data[3];
 
+                    if (monster.Master.Dead) return;
+
+                    if (ValidPoint(front))
+                        monster.Spawn(this, front);
+                    else
+                        monster.Spawn(player.CurrentMap, player.CurrentLocation);
+
+                    monster.Master.Pets.Add(monster);
+                    break;
                 #endregion
 
                 #region FireBang, IceStorm
@@ -1261,6 +1270,7 @@ namespace Server.MirEnvir
                                 {
                                     case ObjectType.Monster:
                                     case ObjectType.Player:
+                                    case ObjectType.Hero:
                                         //Only targets
                                         if (target.IsFriendlyTarget(player))
                                         {
@@ -1313,6 +1323,57 @@ namespace Server.MirEnvir
                                         //Only targets
                                         if (!target.IsAttackTarget(player)) break;
                                         target.Attacked(player, magic.Spell == Spell.ThunderStorm && !target.Undead ? value / 10 : value, DefenceType.MAC, false);
+                                        train = true;
+                                        break;
+                                }
+                            }
+
+                        }
+                    }
+
+                    break;
+
+                #endregion
+
+                #region MoonMist
+
+                case Spell.MoonMist:
+
+                    value = (int)data[2];
+                    location = (Point)data[3];
+                    for (int y = location.Y - 2; y <= location.Y + 2; y++)
+                    {
+                        if (y < 0) continue;
+                        if (y >= Height) break;
+
+                        for (int x = location.X - 2; x <= location.X + 2; x++)
+                        {
+                            if (x < 0) continue;
+                            if (x >= Width) break;
+
+                            cell = GetCell(x, y);
+
+                            if (!cell.Valid || cell.Objects == null) continue;
+
+                            for (int i = 0; i < cell.Objects.Count; i++)
+                            {
+                                MapObject target = cell.Objects[i];
+                                switch (target.Race)
+                                {
+                                    case ObjectType.Monster:
+                                    case ObjectType.Player:
+                                        //Only targets
+                                        if (!target.IsAttackTarget(player)) break;
+
+                                        if (target.Attacked(player, magic.Spell == Spell.ThunderStorm && !target.Undead ? value / 10 : value, DefenceType.AC, false) <= 0)
+                                        {
+                                            if (target.Undead)
+                                            {
+                                                target.ApplyPoison(new Poison { PType = PoisonType.Stun, Duration = magic.Level + 2, TickSpeed = 1000 }, player);
+                                            }
+                                            break;
+                                        }
+
                                         train = true;
                                         break;
                                 }
@@ -1801,7 +1862,7 @@ namespace Server.MirEnvir
                                         //Only targets
                                         if (target.IsAttackTarget(player))
                                         {
-                                            target.ApplyPoison(new Poison { PType = PoisonType.Slow, Duration = value, TickSpeed = 1000, Value = value2 }, player);
+                                            target.ApplyPoison(new Poison { PType = PoisonType.Slow, Duration = value, TickSpeed = 1000, Value = value2, Owner = player }, player);
 
                                             var stats = new Stats
                                             {
@@ -1860,6 +1921,23 @@ namespace Server.MirEnvir
 
                             for (int i = 0; i <= 2; i++)
                             {
+                                bool skip = false;
+                                //for the extra spots make sure to not overlap new traps with old ones since it creates invisible double/tripple /... trap spots
+                                if (i > 0)
+                                {
+                                    cell = GetCell(traps[i]);
+
+                                    if (cell.Objects != null)
+                                        for (int o = 0; o < cell.Objects.Count; o++)
+                                        {
+                                            MapObject target = cell.Objects[o];
+                                            if (target.Race != ObjectType.Spell || (((SpellObject)target).Spell != Spell.FireWall && ((SpellObject)target).Spell != Spell.ExplosiveTrap)) continue;
+
+                                            skip = true;
+                                            break;
+                                        }
+                                }
+                                if (skip) continue;
                                 SpellObject ob = new SpellObject
                                 {
                                     Spell = Spell.ExplosiveTrap,
@@ -2211,8 +2289,67 @@ namespace Server.MirEnvir
                     }
                     break;
 
+                #endregion
+                #region HealingCircle
+
+                case Spell.HealingCircle:
+                    value = (int)data[2];
+                    location = (Point)data[3];
+
+                    train = true;
+                    show = true;
+
+                    for (int y = location.Y - 1; y <= location.Y + 1; y++)
+                    {
+                        if (y < 0) continue;
+                        if (y >= Height) break;
+
+                        for (int x = location.X - 1; x <= location.X + 1; x++)
+                        {
+                            if (x < 0) continue;
+                            if (x >= Width) break;
+
+                            cell = GetCell(x, y);
+
+                            if (!cell.Valid) continue;
+
+                            bool cast = true;
+                            if (cell.Objects != null)
+                                for (int o = 0; o < cell.Objects.Count; o++)
+                                {
+                                    MapObject target = cell.Objects[o];
+                                    if (target.Race != ObjectType.Spell || ((SpellObject)target).Spell != Spell.HealingCircle) continue;
+
+                                    cast = false;
+                                    break;
+                                }
+
+                            if (!cast) continue;
+
+                            SpellObject ob = new SpellObject
+                            {
+                                Spell = Spell.HealingCircle,
+                                Value = value,
+                                ExpireTime = Envir.Time + (10000) + (5000 * magic.Level),
+                                TickSpeed = 400,
+                                Caster = player,
+                                CurrentLocation = new Point(x, y),
+                                CastLocation = location,
+                                Show = show,
+                                CurrentMap = this,
+                            };
+
+                            show = false;
+
+                            AddObject(ob);
+                            ob.Spawned();
+                        }
+                    }
+
+                    break;
+
                     #endregion
-            }
+        }
 
             if (train)
                 player.LevelMagic(magic);

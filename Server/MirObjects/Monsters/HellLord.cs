@@ -1,7 +1,7 @@
+using System.Drawing;
 ﻿using Server.MirDatabase;
 using Server.MirEnvir;
 using S = ServerPackets;
-using System.Drawing;
 
 namespace Server.MirObjects.Monsters
 {
@@ -255,6 +255,7 @@ namespace Server.MirObjects.Monsters
                 Poison = CurrentPoison,
                 Hidden = Hidden,
                 ExtraByte = _stage,
+                Buffs = Buffs.Where(d => d.Info.Visible).Select(e => e.Type).ToList()
             };
         }
     }

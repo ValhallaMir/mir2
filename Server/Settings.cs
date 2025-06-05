@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Server.MirDatabase;
 using Server.MirObjects;
 
@@ -31,7 +27,10 @@ namespace Server
             RoutePath = Path.Combine(EnvirPath, "Routes"),
             NameListPath = Path.Combine(EnvirPath, "NameLists"),
             ValuePath = Path.Combine(EnvirPath, "Values"),
-            NoticePath = Path.Combine(EnvirPath, "Notice.txt");
+            NoticePath = Path.Combine(EnvirPath, "Notice.txt"),
+            MinimapsPath = Path.Combine(EnvirPath, "Previews", "Minimaps"),
+            NPCPreviewPath = Path.Combine(EnvirPath, "Previews", "NPC"),
+            Previews = Path.Combine(EnvirPath, "Previews");
 
         private static readonly InIReader Reader = new InIReader(Path.Combine(ConfigPath, "Setup.ini"));
 
@@ -118,7 +117,8 @@ namespace Server
         public static int RestedPeriod = 60,
                           RestedBuffLength = 10,
                           RestedExpBonus = 5,
-                          RestedMaxBonus = 24;
+                          RestedMaxBonus = 24,
+                          NewbieGuildMaxSize = 1000;
 
         public static string NewbieGuild = "NewbieGuild",
                              SkeletonName = "BoneFamiliar",
@@ -173,6 +173,7 @@ namespace Server
                              ScrollMob2 = "TaoistScroll",
                              ScrollMob3 = "WizardScroll",
                              ScrollMob4 = "AssassinScroll",
+                             StoneName = "StoneTrap",
                              HeroName = "Hero";
 
         public static string HealRing = "Healing",
@@ -269,16 +270,19 @@ namespace Server
 
         public static byte RangeAccuracyBonus = 0;
 
-        public static bool AllowNewHero;
+        //Hero related settings
+        public static bool AllowNewHero = true;
         public static byte Hero_RequiredLevel = 22;
         public static bool[] Hero_CanCreateClass = new bool[0];
-        public static string HeroSealItemName;
-        public static ushort HeroMaximumSealCount;
-        public static byte MaximumHeroCount = 1;
+        public static string HeroSealItemName = "SealedHero";
+        public static ushort HeroMaximumSealCount = 5;
+        public static byte MaximumHeroCount = 9;
 
         public static bool AllowObserve;
 
         //Guild related settings
+        public static bool NewbieGuildBuffEnabled = true;
+        public static int NewbieGuildExpBuff = 5;
         public static byte Guild_RequiredLevel = 22, Guild_PointPerLevel = 0;
         public static float Guild_ExpRate = 0.01f;
         public static uint Guild_WarCost = 3000;
@@ -303,13 +307,22 @@ namespace Server
 
                 var paths = VersionPath.Split(',');
 
+                //foreach (var path in paths)
+                //{
+                //    if (File.Exists(path))
+                //        using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read))
+                //        using (MD5CryptoServiceProvider md5 = new MD5CryptoServiceProvider())
+                //            VersionHashes.Add(md5.ComputeHash(stream));
+                //}
+
                 foreach (var path in paths)
                 {
                     if (File.Exists(path))
                         using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read))
-                        using (MD5CryptoServiceProvider md5 = new MD5CryptoServiceProvider())
+                        using (MD5 md5 = MD5.Create())
                             VersionHashes.Add(md5.ComputeHash(stream));
                 }
+
             }
             catch (Exception ex)
             {
@@ -374,6 +387,7 @@ namespace Server
             PetSave = Reader.ReadBoolean("Game", "PetSave", PetSave);
             PKDelay = Reader.ReadInt32("Game", "PKDelay", PKDelay);
             NewbieGuild = Reader.ReadString("Game", "NewbieGuild", NewbieGuild);
+            NewbieGuildMaxSize = Reader.ReadInt32("Game", "NewbieGuildMaxSize", NewbieGuildMaxSize);
             SkeletonName = Reader.ReadString("Game", "SkeletonName", SkeletonName);
             BugBatName = Reader.ReadString("Game", "BugBatName", BugBatName);
             ShinsuName = Reader.ReadString("Game", "ShinsuName", ShinsuName);
@@ -425,6 +439,7 @@ namespace Server
             ToadName = Reader.ReadString("Game", "ToadName", ToadName);
             SnakeTotemName = Reader.ReadString("Game", "SnakeTotemName", SnakeTotemName);
             SnakesName = Reader.ReadString("Game", "SnakesName", SnakesName);
+            StoneName = Reader.ReadString("Game", "StoneName", StoneName);
             AncientBatName = Reader.ReadString("Game", "AncientBatName", AncientBatName);
             TucsonGeneralEgg = Reader.ReadString("Game", "TucsonGeneralEgg", TucsonGeneralEgg);
             GroupInviteDelay = Reader.ReadInt64("Game", "GroupInviteDelay", GroupInviteDelay);
@@ -480,7 +495,6 @@ namespace Server
                 Directory.CreateDirectory(EnvirPath);
             if (!Directory.Exists(ConfigPath))
                 Directory.CreateDirectory(ConfigPath);
-
             if (!Directory.Exists(MapPath))
                 Directory.CreateDirectory(MapPath);
             if (!Directory.Exists(NPCPath))
@@ -499,6 +513,15 @@ namespace Server
                 Directory.CreateDirectory(NameListPath);
             if (!Directory.Exists(RecipePath))
                 Directory.CreateDirectory(RecipePath);
+            string PreviewsPath = Path.Combine(EnvirPath, "Previews");
+            if (!Directory.Exists(PreviewsPath))
+                Directory.CreateDirectory(PreviewsPath);
+            string NPCPreviewPath = Path.Combine(EnvirPath, "Previews", "NPC");
+            if (!Directory.Exists(NPCPreviewPath))
+                Directory.CreateDirectory(NPCPreviewPath);
+            string MinimapsPath = Path.Combine(EnvirPath, "Previews", "Minimaps");
+            if (!Directory.Exists(MinimapsPath))
+                Directory.CreateDirectory(MinimapsPath);
 
             string fileName = Path.Combine(Settings.NPCPath, DefaultNPCFilename + ".txt");
 
@@ -635,6 +658,7 @@ namespace Server
             Reader.Write("Game", "PetSave", PetSave);
             Reader.Write("Game", "PKDelay", PKDelay);
             Reader.Write("Game", "NewbieGuild", NewbieGuild);
+            Reader.Write("Game", "NewbieGuildMaxSize", NewbieGuildMaxSize);
             Reader.Write("Game", "SkeletonName", SkeletonName);
             Reader.Write("Game", "BugBatName", BugBatName);
             Reader.Write("Game", "ShinsuName", ShinsuName);
@@ -680,6 +704,7 @@ namespace Server
             Reader.Write("Game", "ToadName", ToadName);
             Reader.Write("Game", "SnakeTotemName", SnakeTotemName);
             Reader.Write("Game", "SnakesName", SnakesName);
+            Reader.Write("Game", "StoneName", StoneName);
             Reader.Write("Game", "AncientBatName", AncientBatName);
             Reader.Write("Game", "TucsonGeneralEgg", TucsonGeneralEgg);
             Reader.Write("Game", "GroupInviteDelay", GroupInviteDelay);
@@ -1176,6 +1201,8 @@ namespace Server
             Guild_PointPerLevel = reader.ReadByte("Guilds", "PointPerLevel", Guild_PointPerLevel);
             Guild_WarTime = reader.ReadInt64("Guilds", "WarTime", Guild_WarTime);
             Guild_WarCost = reader.ReadUInt32("Guilds", "WarCost", Guild_WarCost);
+            NewbieGuildBuffEnabled = reader.ReadBoolean("Guilds", "NewbieGuildBuffEnabled", NewbieGuildBuffEnabled);
+            NewbieGuildExpBuff = reader.ReadInt32("Guilds", "NewbieGuildExpBuff", NewbieGuildExpBuff);
 
             int i = 0;
             while (reader.ReadUInt32("Required-" + i.ToString(),"Amount",0) != 0)
@@ -1216,6 +1243,8 @@ namespace Server
             reader.Write("Guilds", "TotalBuffs", Guild_BuffList.Count);
             reader.Write("Guilds", "WarTime", Guild_WarTime);
             reader.Write("Guilds", "WarCost", Guild_WarCost);
+            reader.Write("Guilds", "NewbieGuildExpBuff", NewbieGuildExpBuff);
+            reader.Write("Guilds", "NewbieGuildBuffEnabled", NewbieGuildBuffEnabled);
 
             int i;
             for (i = 0; i < Guild_ExperienceList.Count; i++)

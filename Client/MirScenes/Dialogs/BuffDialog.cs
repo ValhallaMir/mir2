@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using Client.MirControls;
+﻿using Client.MirControls;
 using Client.MirGraphics;
 using Client.MirSounds;
-using System.Drawing;
-using System.Windows.Forms;
 
 namespace Client.MirScenes.Dialogs
 {
@@ -342,6 +338,9 @@ namespace Client.MirScenes.Dialogs
                 case BuffType.Blindness:
                     text += "Reduces visibility\n";
                     break;
+                case BuffType.Newbie:
+                    text += "A boost provided to members of your guild.\n";
+                    break;
             }
 
             if (!overridestats)
@@ -508,6 +507,8 @@ namespace Client.MirScenes.Dialogs
                     return 261;
                 case BuffType.Skill:
                     return 200;
+                case BuffType.Newbie:
+                    return 182;
 
                 //Stats
                 case BuffType.Impact:
@@ -549,15 +550,15 @@ namespace Client.MirScenes.Dialogs
     {
         public List<ClientPoisonBuff> Buffs = new List<ClientPoisonBuff>();
 
-        protected MirButton _expandCollapseButton;
-        protected MirLabel _buffCountLabel;
-        protected List<MirImageControl> _buffList = new List<MirImageControl>();
-        protected bool _fadedOut, _fadedIn;
-        protected int _buffCount;
-        protected long _nextFadeTime;
+        private MirButton _expandCollapseButton;
+        private MirLabel _buffCountLabel;
+        private List<MirImageControl> _buffList = new List<MirImageControl>();
+        private bool _fadedOut, _fadedIn;
+        private int _buffCount;
+        private long _nextFadeTime;
 
-        protected const long FadeDelay = 55;
-        protected const float FadeRate = 0.2f;
+        private const long FadeDelay = 55;
+        private const float FadeRate = 0.2f;
 
         public PoisonBuffDialog()
         {
@@ -644,7 +645,6 @@ namespace Client.MirScenes.Dialogs
         public string BuffString(ClientPoisonBuff buff)
         {
             string text = RegexFunctions.SeperateCamelCase(buff.Type.ToString()) + "\n";
-            bool overridestats = false;
 
             switch (buff.Type)
             {

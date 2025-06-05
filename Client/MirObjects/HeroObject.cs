@@ -1,16 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using Client.MirGraphics;
-using Client.MirNetwork;
-using Client.MirScenes;
-using Client.MirSounds;
-using Client.MirControls;
-using S = ServerPackets;
-using C = ClientPackets;
+﻿using Client.MirControls;
 using Client.MirScenes.Dialogs;
+using S = ServerPackets;
 
 namespace Client.MirObjects
 {
@@ -26,7 +16,14 @@ namespace Client.MirObjects
 
         public override bool ShouldDrawHealth()
         {
-            return false; //OwnerName == GameScene.HeroInfo.Name;
+            if (GroupDialog.GroupList.Contains(OwnerName) || OwnerName == User.Name)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
 
         public HeroObject(uint objectID) : base(objectID)

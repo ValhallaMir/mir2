@@ -1,7 +1,5 @@
-﻿﻿using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Drawing;
-using System.IO;
 
 namespace ServerPackets
 {
@@ -417,6 +415,7 @@ namespace ServerPackets
         public LightSetting Lights;
         public bool Lightning, Fire;
         public byte MapDarkLight;
+        public WeatherSetting WeatherParticles = WeatherSetting.None;
 
         protected override void ReadPacket(BinaryReader reader)
         {
@@ -431,6 +430,7 @@ namespace ServerPackets
             if ((bools & 0x02) == 0x02) Fire = true;
             MapDarkLight = reader.ReadByte();
             Music = reader.ReadUInt16();
+            WeatherParticles = (WeatherSetting)reader.ReadUInt16();
         }
 
         protected override void WritePacket(BinaryWriter writer)
@@ -447,6 +447,7 @@ namespace ServerPackets
             writer.Write(bools);
             writer.Write(MapDarkLight);
             writer.Write(Music);
+            writer.Write((UInt16)WeatherParticles);
         }
     }
 
@@ -580,7 +581,7 @@ namespace ServerPackets
             Experience = reader.ReadInt64();
             MaxExperience = reader.ReadInt64();
 
-            LevelEffects = (LevelEffects)reader.ReadByte();
+            LevelEffects = (LevelEffects)reader.ReadUInt16();
             HasHero = reader.ReadBoolean();
             HeroBehaviour = (HeroBehaviour)reader.ReadByte();
 
@@ -659,7 +660,7 @@ namespace ServerPackets
             writer.Write(Experience);
             writer.Write(MaxExperience);
 
-            writer.Write((byte)LevelEffects);
+            writer.Write((ushort)LevelEffects);
             writer.Write(HasHero);
             writer.Write((byte)HeroBehaviour);
 
@@ -900,7 +901,7 @@ namespace ServerPackets
                 Buffs.Add((BuffType)reader.ReadByte());
             }
 
-            LevelEffects = (LevelEffects)reader.ReadByte();
+            LevelEffects = (LevelEffects)reader.ReadUInt16();
         }
 
         protected override void WritePacket(BinaryWriter writer)
@@ -943,7 +944,7 @@ namespace ServerPackets
                 writer.Write((byte)Buffs[i]);
             }
 
-            writer.Write((byte)LevelEffects);
+            writer.Write((ushort)LevelEffects);
         }
     }
 
@@ -1596,12 +1597,14 @@ namespace ServerPackets
 
         public ulong UniqueID;
         public ushort Count;
+        public bool HeroItem = false;
         public bool Success;
 
         protected override void ReadPacket(BinaryReader reader)
         {
             UniqueID = reader.ReadUInt64();
             Count = reader.ReadUInt16();
+            HeroItem = reader.ReadBoolean();
             Success = reader.ReadBoolean();
         }
 
@@ -1609,6 +1612,7 @@ namespace ServerPackets
         {
             writer.Write(UniqueID);
             writer.Write(Count);
+            writer.Write(HeroItem);
             writer.Write(Success);
         }
     }
@@ -1718,6 +1722,7 @@ namespace ServerPackets
         public ushort Level;
         public string LoverName;
         public bool AllowObserve;
+        public bool IsHero = false;
 
         protected override void ReadPacket(BinaryReader reader)
         {
@@ -1737,6 +1742,7 @@ namespace ServerPackets
             Level = reader.ReadUInt16();
             LoverName = reader.ReadString();
             AllowObserve = reader.ReadBoolean();
+            IsHero = reader.ReadBoolean();
         }
 
         protected override void WritePacket(BinaryWriter writer)
@@ -1758,6 +1764,7 @@ namespace ServerPackets
             writer.Write(Level);
             writer.Write(LoverName);
             writer.Write(AllowObserve);
+            writer.Write(IsHero);
         }
     }
 
@@ -2902,6 +2909,7 @@ namespace ServerPackets
         public Point Location;
         public MirDirection Direction;
         public byte MapDarkLight;
+        public WeatherSetting Weather = WeatherSetting.None;
 
 
         protected override void ReadPacket(BinaryReader reader)
@@ -2916,6 +2924,7 @@ namespace ServerPackets
             Direction = (MirDirection)reader.ReadByte();
             MapDarkLight = reader.ReadByte();
             Music = reader.ReadUInt16();
+            Weather = (WeatherSetting)reader.ReadUInt16();
         }
         protected override void WritePacket(BinaryWriter writer)
         {
@@ -2930,6 +2939,7 @@ namespace ServerPackets
             writer.Write((byte)Direction);
             writer.Write(MapDarkLight);
             writer.Write(Music);
+            writer.Write((ushort)Weather);
         }
     }
     public sealed class ObjectTeleportOut : Packet
@@ -2983,6 +2993,7 @@ namespace ServerPackets
     {
         public override short Index { get { return (short)ServerPacketIds.NPCGoods; } }
 
+        public byte Progress; // 1: Start, 2: Middle, 3: End
         public List<UserItem> List = new List<UserItem>();
         public float Rate;
         public PanelType Type;
@@ -2990,8 +3001,9 @@ namespace ServerPackets
 
         protected override void ReadPacket(BinaryReader reader)
         {
-            int count = reader.ReadInt32();
+            Progress = reader.ReadByte();
 
+            int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
                 List.Add(new UserItem(reader));
 
@@ -3002,8 +3014,9 @@ namespace ServerPackets
         }
         protected override void WritePacket(BinaryWriter writer)
         {
-            writer.Write(List.Count);
+            writer.Write(Progress);
 
+            writer.Write(List.Count);
             for (int i = 0; i < List.Count; i++)
                 List[i].Save(writer);
 
@@ -4209,7 +4222,7 @@ namespace ServerPackets
          * 2: Already Sold.
          * 3: Expired.
          * 4: Not enough Gold.
-         * 5: Too heavy or not enough bag space.
+         * 5: Not enough bag space.
          * 6: You cannot buy your own items.
          * 7: Trust Merchant is too far.
          * 8: Too much Gold.
@@ -5597,12 +5610,12 @@ namespace ServerPackets
         protected override void ReadPacket(BinaryReader reader)
         {
             ObjectID = reader.ReadUInt32();
-            LevelEffects = (LevelEffects)reader.ReadByte();
+            LevelEffects = (LevelEffects)reader.ReadUInt16();
         }
         protected override void WritePacket(BinaryWriter writer)
         {
             writer.Write(ObjectID);
-            writer.Write((byte)LevelEffects);
+            writer.Write((ushort)LevelEffects);
         }
     }
 

@@ -1,11 +1,7 @@
-﻿using System.Collections.Generic;
-using System;
 using System.Drawing;
-using Server.MirDatabase;
+﻿using Server.MirDatabase;
 using Server.MirEnvir;
 using S = ServerPackets;
-using System.Linq;
-using System.Text;
 
 namespace Server.MirObjects.Monsters
 {
@@ -306,6 +302,7 @@ namespace Server.MirObjects.Monsters
                 Skeleton = Harvested,
                 Poison = CurrentPoison,
                 Hidden = Hidden,
+                Buffs = Buffs.Where(d => d.Info.Visible).Select(e => e.Type).ToList()
             };
         }
 

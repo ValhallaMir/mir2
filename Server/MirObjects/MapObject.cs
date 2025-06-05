@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using Server.MirDatabase;
+﻿using Server.MirDatabase;
 using Server.MirEnvir;
-using Server.MirNetwork;
 using Server.MirObjects.Monsters;
 using S = ServerPackets;
-using System.IO;
-using System.Linq;
 
 namespace Server.MirObjects
 {
@@ -206,7 +201,6 @@ namespace Server.MirObjects
 
         }
 
-
         public virtual void Process()
         {
             if (Master != null && Master.Node == null) Master = null;
@@ -353,9 +347,10 @@ namespace Server.MirObjects
 
             OperateTime = Envir.Time + Envir.Random.Next(OperateDelay);
 
-            InSafeZone = CurrentMap != null && CurrentMap.GetSafeZone(CurrentLocation) != null;
             BroadcastInfo();
             BroadcastHealthChange();
+
+            InSafeZone = CurrentMap != null && CurrentMap.GetSafeZone(CurrentLocation) != null;
         }
         public virtual void Despawn()
         {
@@ -424,14 +419,22 @@ namespace Server.MirObjects
         {
             Broadcast(GetInfo());
             return;
-        } 
+        }
 
         public bool IsAttackTarget(MapObject attacker)
         {
             if (attacker == null || attacker.Node == null) return false;
-            if (Dead || InSafeZone || attacker.InSafeZone || attacker == this) return false;
-            if (CurrentMap.Info.NoFight) return false;
-            
+            if (Dead || attacker == this) return false;
+
+            var flag = true;
+            if (Race == ObjectType.Monster)
+            {
+                // Check if we are a training AI - we can be attacked in safezones
+                if (((MonsterObject)this).Info.AI == 56)
+                    flag = false;
+            }
+            if (flag && (InSafeZone || attacker.InSafeZone)) return false;
+
             switch (attacker.Race)
             {
                 case ObjectType.Player:

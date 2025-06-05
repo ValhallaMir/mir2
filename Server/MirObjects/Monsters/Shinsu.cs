@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using Server.MirDatabase;
+﻿using Server.MirDatabase;
 using Server.MirEnvir;
 using S = ServerPackets;
 
@@ -96,22 +91,23 @@ namespace Server.MirObjects.Monsters
         public override Packet GetInfo()
         {
             return new S.ObjectMonster
-                {
-                    ObjectID = ObjectID,
-                    Name = Name,
-                    NameColour = NameColour,
-                    Location = CurrentLocation,
-                    Image = Mode ? Monster.Shinsu1 : Monster.Shinsu,
-                    Direction = Direction,
-                    Effect = Info.Effect,
-                    AI = Info.AI,
-                    Light = Info.Light,
-                    Dead = Dead,
-                    Skeleton = Harvested,
-                    Poison = CurrentPoison,
-                    Hidden = Hidden,
-                    Extra = Summoned,
-                };
+            {
+                ObjectID = ObjectID,
+                Name = Name,
+                NameColour = NameColour,
+                Location = CurrentLocation,
+                Image = Mode ? Monster.Shinsu1 : Monster.Shinsu,
+                Direction = Direction,
+                Effect = Info.Effect,
+                AI = Info.AI,
+                Light = Info.Light,
+                Dead = Dead,
+                Skeleton = Harvested,
+                Poison = CurrentPoison,
+                Hidden = Hidden,
+                Extra = Summoned,
+                Buffs = Buffs.Where(d => d.Info.Visible).Select(e => e.Type).ToList()
+            };
         }
     }
 }

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Server.MirObjects
+﻿namespace Server.MirObjects
 {
     public class NPCActions
     {
@@ -107,6 +103,8 @@ namespace Server.MirObjects
         RollYut,
         Drop,
         ReviveHero,
-        SealHero
+        SealHero,
+        DeleteHero,
+        ConquestRepairAll
     }
 }

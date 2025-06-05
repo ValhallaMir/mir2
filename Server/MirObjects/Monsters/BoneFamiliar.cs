@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using Server.MirDatabase;
+﻿using Server.MirDatabase;
 using S = ServerPackets;
 
 namespace Server.MirObjects.Monsters
@@ -41,6 +37,7 @@ namespace Server.MirObjects.Monsters
                 Poison = CurrentPoison,
                 Hidden = Hidden,
                 Extra = Summoned,
+                Buffs = Buffs.Where(d => d.Info.Visible).Select(e => e.Type).ToList()
             };
         }
     }

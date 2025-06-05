@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using Server.MirEnvir;
+﻿using Server.MirEnvir;
 using S = ServerPackets;
 
 
@@ -57,7 +53,7 @@ namespace Server.MirObjects
 
             if (Caster != null && Caster.Node == null) Caster = null;
 
-            if (Envir.Time > ExpireTime || ((Spell == Spell.FireWall || Spell == Spell.Portal || Spell == Spell.ExplosiveTrap || Spell == Spell.Reincarnation) && Caster == null) || (Spell == Spell.TrapHexagon && Target != null) || (Spell == Spell.Trap && Target != null))
+            if (Envir.Time > ExpireTime || ((Spell == Spell.FireWall || Spell == Spell.Portal || Spell == Spell.ExplosiveTrap || Spell == Spell.Reincarnation || Spell == Spell.HealingCircle) && Caster == null) || (Spell == Spell.TrapHexagon && Target != null) || (Spell == Spell.Trap && Target != null))
             {
                 if (Spell == Spell.TrapHexagon && Target != null || Spell == Spell.Trap && Target != null)
                 {
@@ -105,7 +101,12 @@ namespace Server.MirObjects
                 Despawn();
                 return;
             }
-
+            if (Caster != null && Spell == Spell.HealingCircle && FindObject(Caster.ObjectID, 20) == null)
+            {
+                CurrentMap.RemoveObject(this);
+                Despawn();
+                return;
+            }
             if (Envir.Time < TickTime) return;
             TickTime = Envir.Time + TickSpeed;
 
@@ -134,11 +135,15 @@ namespace Server.MirObjects
                     break;
                 case Spell.Healing: //SafeZone
                     {
-                        if (ob.Race != ObjectType.Player && (ob.Race != ObjectType.Monster || ob.Master == null || ob.Master.Race != ObjectType.Player)) return;
+                        if (ob.Master == null) return;
                         if (ob.Dead || ob.HealAmount != 0 || ob.PercentHealth == 100) return;
 
-                        ob.HealAmount += 25;
-                        Broadcast(new S.ObjectEffect { ObjectID = ob.ObjectID, Effect = SpellEffect.Healing });
+                        if (ob.Race == ObjectType.Player || ob.Race == ObjectType.Hero || (ob.Race == ObjectType.Monster && ob.Master.Race == ObjectType.Player))
+                        {
+                            ob.HealAmount += 25;
+                            Broadcast(new S.ObjectEffect { ObjectID = ob.ObjectID, Effect = SpellEffect.Healing });
+                        }
+
                     }
                     break;
                 case Spell.PoisonCloud:
@@ -370,6 +375,35 @@ namespace Server.MirObjects
                         ob.Struck(Value, DefenceType.AC);
                     }
                     break;
+                case Spell.HealingCircle:
+                    if (ob.Race != ObjectType.Player && ob.Race != ObjectType.Monster) return;
+
+                    if (Caster == ob || (Caster.GroupMembers != null && Caster.GroupMembers.Contains(ob)) || (ob.Master != null && Caster.GroupMembers != null && Caster.GroupMembers.Contains(ob.Master)))
+                    {
+                        if (ob.Dead || ob.HealAmount != 0 || ob.PercentHealth == 100) return;
+
+                        ob.HealAmount += 25;
+                        Broadcast(new S.ObjectEffect { ObjectID = ob.ObjectID, Effect = SpellEffect.Healing });
+                    }
+                    else if (ob.IsAttackTarget(Caster))
+                    {
+                        if (ob.Dead) return;
+
+                        if (!ob.IsAttackTarget(Caster)) return;
+
+                        if (Value == 0) return;
+                        ob.Struck(Value, DefenceType.MAC);
+
+                        ob.ApplyPoison(new Poison
+                        {
+                            Owner = Caster,
+                            Duration = ob.Race == ObjectType.Player ? 4 : 5 + Envir.Random.Next(5),
+                            PType = PoisonType.Slow,
+                            TickSpeed = 1000,
+                        }, Caster);
+                        ob.OperateTime = 0;
+                    }
+                    break;
             }
         }
 
@@ -483,6 +517,7 @@ namespace Server.MirObjects
                 case Spell.HornedSorcererDustTornado:
                 case Spell.HornedCommanderRockFall:
                 case Spell.HornedCommanderRockSpike:
+                case Spell.HealingCircle:
                     if (!Show)
                         return null;
 

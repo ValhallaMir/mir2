@@ -1,10 +1,6 @@
+using System.Drawing;
 ﻿using Server.MirEnvir;
 using Server.MirObjects;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Text;
 
 namespace Server.MirDatabase
 {
@@ -60,10 +56,9 @@ namespace Server.MirDatabase
 
             if (Name == Settings.NewbieGuild)
             {
-                MemberCap = 1000;
-                Level = 1;
+                MemberCap = Settings.NewbieGuildMaxSize;
+                Level = 21;
             }
-
             else if(Level < Settings.Guild_MembercapList.Count)
             {
                 MemberCap = Settings.Guild_MembercapList[Level];
@@ -157,10 +152,8 @@ namespace Server.MirDatabase
 
             if (Name == Settings.NewbieGuild)
             {
-                MemberCap = 1000;
-                Level = 1;
+                MemberCap = Settings.NewbieGuildMaxSize;
             }
-
             else if (Level < Settings.Guild_MembercapList.Count)
             {
                 MemberCap = Settings.Guild_MembercapList[Level];

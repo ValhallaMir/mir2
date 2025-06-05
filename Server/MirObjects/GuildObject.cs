@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.IO;
-using Server.MirEnvir;
-using System.Drawing;
+﻿using Server.MirEnvir;
 using Server.MirDatabase;
 
 namespace Server.MirObjects
@@ -162,8 +156,7 @@ namespace Server.MirObjects
 
             if (Conquest != null)
             {
-                string conquest = "[" + Conquest.Info.Name + "]";
-                gName += conquest;
+                gName += "[" + Conquest.Info.Name + "]";
             }
 
             member.Enqueue(new ServerPackets.GuildStatus()
@@ -451,6 +444,34 @@ namespace Server.MirObjects
             return true;
         }
 
+        public void DeleteMember(string name)
+        {//carefull this can lead to guild with no ranks or members(or no leader)
+            
+            GuildMember Member = null;
+            GuildRank MemberRank = null;
+            for (int i = 0; i < Ranks.Count; i++)
+                for (int j = 0; j < Ranks[i].Members.Count; j++)
+                {
+
+                    Member = Ranks[i].Members[j];
+                    MemberRank = Ranks[i];
+
+                    if (Member.Name != name) continue;
+
+                    MemberDeleted(Member.Name, (PlayerObject)Member.Player, true);
+                    if (Member.Player != null)
+                    {
+                        PlayerObject LeavingMember = (PlayerObject)Member.Player;
+                        LeavingMember.RefreshStats();
+                    }
+                    MemberRank.Members.Remove(Member);
+                    NeedSave = true;
+                    Info.Membercount--;
+
+                    break;
+                }
+        }
+
         public void MemberDeleted(string name, PlayerObject formerMember, bool kickSelf)
         {
             for (int i = 0; i < Ranks.Count; i++)
@@ -627,7 +648,7 @@ namespace Server.MirObjects
 
         public bool GoToWar(GuildObject enemyGuild)
         {
-            if (enemyGuild == null)
+            if (enemyGuild == null || enemyGuild.Name == Settings.NewbieGuild)
             {
                 return false;
             }

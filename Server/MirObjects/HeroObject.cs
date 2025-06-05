@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using C = ClientPackets;
-using Server.MirDatabase;
+﻿using Server.MirDatabase;
 using Server.MirEnvir;
 using Server.MirNetwork;
 using S = ServerPackets;
-using System.Text.RegularExpressions;
 using Server.MirObjects.Monsters;
 
 namespace Server.MirObjects
@@ -38,35 +32,36 @@ namespace Server.MirObjects
         {
             get
             {
-                return base.CanMove && !ActiveBlizzard && !ActiveReincarnation;
+                return base.CanMove && !ActiveBlizzard && !ActiveReincarnation && (Owner.PMode == PetMode.MoveOnly || Owner.PMode == PetMode.Both || Owner.PMode == PetMode.FocusMasterTarget);
             }
         }
+
         public override bool CanWalk
         {
             get
             {
-                return base.CanWalk && !ActiveBlizzard && !ActiveReincarnation;
+                return base.CanWalk && !ActiveBlizzard && !ActiveReincarnation && (Owner.PMode == PetMode.MoveOnly || Owner.PMode == PetMode.Both || Owner.PMode == PetMode.FocusMasterTarget);
             }
         }
         public override bool CanRun
         {
             get
             {
-                return base.CanRun && !ActiveBlizzard && !ActiveReincarnation;
+                return base.CanRun && !ActiveBlizzard && !ActiveReincarnation && (Owner.PMode == PetMode.MoveOnly || Owner.PMode == PetMode.Both || Owner.PMode == PetMode.FocusMasterTarget);
             }
         }
         public override bool CanAttack
         {
             get
             {
-                return base.CanAttack && !ActiveBlizzard && !ActiveReincarnation;
+                return base.CanAttack && !ActiveBlizzard && !ActiveReincarnation && (Owner.PMode == PetMode.AttackOnly || Owner.PMode == PetMode.Both || Owner.PMode == PetMode.FocusMasterTarget);
             }
         }
         protected override bool CanCast
         {
             get
             {
-                return base.CanCast && !ActiveBlizzard && !ActiveReincarnation;
+                return base.CanCast && !ActiveBlizzard && !ActiveReincarnation && (Owner.PMode == PetMode.AttackOnly || Owner.PMode == PetMode.Both || Owner.PMode == PetMode.FocusMasterTarget);
             }
         }
 
@@ -135,7 +130,10 @@ namespace Server.MirObjects
         {
             CheckCellTime = false;
 
-            Owner = owner;            
+            Owner = owner;
+
+            base.Report = owner.Report;
+
             Load(info, null);           
         }
 
@@ -297,7 +295,7 @@ namespace Server.MirObjects
         {
             return true;
         }
-        public override void BeginMagic(Spell spell, MirDirection dir, uint targetID, Point location)
+        public override void BeginMagic(Spell spell, MirDirection dir, uint targetID, Point location, bool spellTargetLock = false)
         {
             NextMagicSpell = spell;
             NextMagicDirection = dir;
@@ -311,6 +309,8 @@ namespace Server.MirObjects
 
             UserItem item = null;
             int index = -1;
+
+            if (Owner.Hero != null && Owner.Hero.Dead) return;
 
             for (int i = 0; i < Info.Inventory.Length; i++)
             {
@@ -429,7 +429,7 @@ namespace Server.MirObjects
                             temp.CurrentDura = (ushort)Math.Min(temp.MaxDura, temp.CurrentDura + 5000);
                             temp.DuraChanged = false;
 
-                            ReceiveChat("Your weapon has been partially repaired", ChatType.Hint);
+                            ReceiveChat("Hero's weapon has been partially repaired", ChatType.Hint);
                             Owner.Enqueue(new S.ItemRepaired { UniqueID = temp.UniqueID, MaxDura = temp.MaxDura, CurrentDura = temp.CurrentDura });
                             break;
                         case 5: //WarGodOil
@@ -447,7 +447,7 @@ namespace Server.MirObjects
                             temp.CurrentDura = temp.MaxDura;
                             temp.DuraChanged = false;
 
-                            ReceiveChat("Your weapon has been completely repaired", ChatType.Hint);
+                            ReceiveChat("Hero's weapon has been completely repaired", ChatType.Hint);
                             Owner.Enqueue(new S.ItemRepaired { UniqueID = temp.UniqueID, MaxDura = temp.MaxDura, CurrentDura = temp.CurrentDura });
                             break;
                         case 6: //ResurrectionScroll
@@ -462,6 +462,17 @@ namespace Server.MirObjects
                                 MP = Stats[Stat.MP];
                                 Revive(MaxHealth, true);
                             }
+                            break;
+                        case 15: //Increase Hero inventory
+                            if (Info.Inventory.Length >= 42)
+                            {
+                                ReceiveChat(string.Format("Hero Inventory is already at Maximum"), ChatType.System);
+                                Owner.Enqueue(p);
+                                return;
+                            }
+                            Enqueue(new S.ResizeInventory { Size = Info.ResizeInventory() });
+                            ReceiveChat(string.Format("Hero Inventory Increased"), ChatType.System);
+                            Owner.Enqueue(p);
                             break;
                     }
                     break;
@@ -498,7 +509,7 @@ namespace Server.MirObjects
                     temp.CurrentDura = (ushort)Math.Min(temp.MaxDura, temp.CurrentDura + item.CurrentDura);
                     temp.DuraChanged = false;
 
-                    ReceiveChat("Your mount has been fed.", ChatType.Hint);
+                    ReceiveChat("Hero's mount has been fed.", ChatType.Hint);
                     Owner.Enqueue(new S.ItemRepaired { UniqueID = temp.UniqueID, MaxDura = temp.MaxDura, CurrentDura = temp.CurrentDura });
 
                     RefreshStats();
@@ -600,7 +611,7 @@ namespace Server.MirObjects
                     item.CurrentDura = (ushort)(item.CurrentDura - 1000);
                     Enqueue(new S.DuraChanged { UniqueID = item.UniqueID, CurrentDura = item.CurrentDura });
                     RefreshStats();
-                    ReceiveChat("You have been given a second chance at life", ChatType.System);
+                    ReceiveChat("Hero has been given a second chance at life", ChatType.System);
                     return;
                 }
             }
@@ -667,6 +678,7 @@ namespace Server.MirObjects
         {
             Owner.Enqueue(new S.HeroHealthChanged { HP = HP, MP = MP });
             base.SendHealthChanged();
+            BroadcastManaChange();
         }
 
         public override void BroadcastHealthChange()
@@ -744,7 +756,7 @@ namespace Server.MirObjects
             if (Target != null && (Target.CurrentMap != CurrentMap || !Target.IsAttackTarget(this) || !Functions.InRange(CurrentLocation, Target.CurrentLocation, Globals.DataRange)))
                 Target = null;
 
-            if (!Functions.InRange(CurrentLocation, Owner.CurrentLocation, Globals.DataRange) || CurrentMap != Owner.CurrentMap)
+            if ((!Functions.InRange(CurrentLocation, Owner.CurrentLocation, Globals.DataRange) || CurrentMap != Owner.CurrentMap) && CanMove)
                 OwnerRecall();
 
             if (Dead) return;            
@@ -1010,6 +1022,11 @@ namespace Server.MirObjects
 
             if (!Teleport(Owner.CurrentMap, Owner.Back))
                 Teleport(Owner.CurrentMap, Owner.CurrentLocation);
+
+            if (!Dead)
+            {
+                BroadcastManaChange();
+            }
         }        
 
         protected virtual void FindTarget()
@@ -1104,9 +1121,16 @@ namespace Server.MirObjects
 
         public override void GainExp(uint amount)
         {
-            if (!CanGainExp) return;
-
             if (amount == 0) return;
+
+            for (int i = 0; i < Pets.Count; i++)
+            {
+                MonsterObject monster = Pets[i];
+                if (monster.CurrentMap == CurrentMap && Functions.InRange(monster.CurrentLocation, CurrentLocation, Globals.DataRange) && !monster.Dead)
+                    monster.PetExp(amount);
+            }
+
+            if (!CanGainExp) return;
 
             if (Stats[Stat.ExpRatePercent] > 0)
             {
@@ -1116,13 +1140,6 @@ namespace Server.MirObjects
             Experience += amount;
 
             Owner.Enqueue(new S.GainHeroExperience { Amount = amount });
-
-            for (int i = 0; i < Pets.Count; i++)
-            {
-                MonsterObject monster = Pets[i];
-                if (monster.CurrentMap == CurrentMap && Functions.InRange(monster.CurrentLocation, CurrentLocation, Globals.DataRange) && !monster.Dead)
-                    monster.PetExp(amount);
-            }
 
             if (Experience < MaxExperience) return;
             if (Level >= ushort.MaxValue) return;
@@ -1184,6 +1201,33 @@ namespace Server.MirObjects
             SendBaseStats();
         }
 
+        public override void SendHealth(HumanObject player)
+        {
+            byte time = Math.Min(byte.MaxValue, (byte)Math.Max(5, (RevTime - Envir.Time) / 1000));
+
+            Packet p = new S.ObjectHealth { ObjectID = ObjectID, Percent = PercentHealth, Expire = time };
+
+            if (Envir.Time < RevTime)
+            {
+                CurrentMap.Broadcast(p, CurrentLocation);
+                return;
+            }
+
+            Owner.Enqueue(p);
+
+            if (Owner.GroupMembers != null)
+            {
+                for (int i = 0; i < Owner.GroupMembers.Count; i++)
+                {
+                    PlayerObject member = Owner.GroupMembers[i];
+
+                    if (Master == member) continue;
+
+                    if (member.CurrentMap != CurrentMap || !Functions.InRange(member.CurrentLocation, CurrentLocation, Globals.DataRange)) continue;
+                    member.Enqueue(p);
+                }
+            }
+        }
         protected override void SendBaseStats()
         {
             Owner.Enqueue(new S.HeroBaseStatsInfo { Stats = Settings.ClassBaseStats[(byte)Class] });

@@ -1,13 +1,11 @@
+using System.Drawing;
 ﻿using Server.MirDatabase;
 using Server.MirEnvir;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Globalization;
-using System.IO;
-using System.Linq;
+using System.Numerics;
 using System.Text.RegularExpressions;
 using S = ServerPackets;
+using Timer = Server.MirEnvir.Timer;
 
 namespace Server.MirObjects
 {
@@ -1025,8 +1023,8 @@ namespace Server.MirObjects
                     acts.Add(new NPCActions(ActionType.SetConquestRate, parts[1], parts[2]));
                     break;
                 case "STARTCONQUEST":
-                    if (parts.Length < 3) return;
-                    acts.Add(new NPCActions(ActionType.StartConquest, parts[1], parts[2]));
+                    if (parts.Length < 2) return;
+                    acts.Add(new NPCActions(ActionType.StartConquest, parts[1]));
                     break;
                 case "SCHEDULECONQUEST":
                     if (parts.Length < 2) return;
@@ -1110,8 +1108,18 @@ namespace Server.MirObjects
                 case "REVIVEHERO":
                     acts.Add(new NPCActions(ActionType.ReviveHero));
                     break;
+
                 case "SEALHERO":
                     acts.Add(new NPCActions(ActionType.SealHero));
+                    break;
+
+                case "DELETEHERO":
+                    acts.Add(new NPCActions(ActionType.DeleteHero));
+                    break;
+
+                case "CONQUESTREPAIRALL":
+                    if (parts.Length < 2) return;
+                    acts.Add(new NPCActions(ActionType.ConquestRepairAll, parts[1]));
                     break;
             }
         }
@@ -1432,7 +1440,6 @@ namespace Server.MirObjects
                 case "GUILDWARFEE":
                     newValue = Settings.Guild_WarCost.ToString();
                     break;
-
                 case "PARCELAMOUNT":
                     newValue = player.GetMailAwaitingCollectionAmount().ToString();
                     break;
@@ -1444,7 +1451,26 @@ namespace Server.MirObjects
                 case "ROLLRESULT":
                     newValue = player.NPCData.TryGetValue("NPCRollResult", out object _rollResult) ? _rollResult.ToString() : "Not Rolled";
                     break;
-
+                case "MOUNTLOYALTY":
+                    if (!player.Mount.HasMount)
+                    {
+                        newValue = "No Mount";
+                    }
+                    else
+                    {
+                        newValue = $"{player.Info.Equipment[(int)EquipmentSlot.Mount].CurrentDura} ({player.Info.Equipment[(int)EquipmentSlot.Mount].MaxDura})";
+                    }
+                    break;
+                case "MOUNT":
+                    if (player.Mount.HasMount)
+                    {
+                        newValue = player.Info.Equipment[(int)EquipmentSlot.Mount].FriendlyName;
+                    }
+                    else
+                    {
+                        newValue = "No Mount";
+                    }
+                    break;
                 default:
                     newValue = string.Empty;
                     break;
@@ -2918,7 +2944,7 @@ namespace Server.MirObjects
                                     item.Count = item.Info.StackSize;
                                 }
 
-                                if (player.CanGainItem(item, false))
+                                if (player.CanGainItem(item))
                                     player.GainItem(item);
                             }
                         }
@@ -3518,6 +3544,9 @@ namespace Server.MirObjects
 
                             if (player.MyGuildRank == null) return;
 
+                            if (player.MyGuild.Name == Settings.NewbieGuild) player.RemoveBuff(BuffType.Newbie);
+                            if (player.HasBuff(BuffType.Guild)) player.RemoveBuff(BuffType.Guild);
+
                             player.MyGuild.DeleteMember(player, player.Name);
                         }
                         break;
@@ -3680,12 +3709,19 @@ namespace Server.MirObjects
                             if (conquestArcher.ArcherMonster != null)
                                 if (!conquestArcher.ArcherMonster.Dead) return;
 
-                            if (player.MyGuild == null || player.MyGuild.Gold < conquestArcher.GetRepairCost()) return;
+                            if (player.IsGM)
+                            {
+                                conquestArcher.Spawn(true);
+                            }
+                            else
+                            {
+                                if (player.MyGuild == null || player.MyGuild.Gold < conquestArcher.GetRepairCost()) return;
 
-                            player.MyGuild.Gold -= conquestArcher.GetRepairCost();
-                            player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = conquestArcher.GetRepairCost() });
+                                player.MyGuild.Gold -= conquestArcher.GetRepairCost();
+                                player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = conquestArcher.GetRepairCost() });
 
-                            conquestArcher.Spawn(true);
+                                conquestArcher.Spawn(true);
+                            }
                         }
                         break;
                     case ActionType.ConquestGate:
@@ -3698,12 +3734,19 @@ namespace Server.MirObjects
                             ConquestGuildGateInfo conquestGate = conquest.GateList.FirstOrDefault(z => z.Index == tempInt);
                             if (conquestGate == null) return;
 
-                            if (player.MyGuild == null || player.MyGuild.Gold < conquestGate.GetRepairCost()) return;
+                            if (player.IsGM)
+                            {
+                                conquestGate.Repair();
+                            }
+                            else
+                            {
+                                if (player.MyGuild == null || player.MyGuild.Gold < conquestGate.GetRepairCost()) return;
 
-                            player.MyGuild.Gold -= (uint)conquestGate.GetRepairCost();
-                            player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = (uint)conquestGate.GetRepairCost() });
+                                player.MyGuild.Gold -= (uint)conquestGate.GetRepairCost();
+                                player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = (uint)conquestGate.GetRepairCost() });
 
-                            conquestGate.Repair();
+                                conquestGate.Repair();
+                            }
                         }
                         break;
                     case ActionType.ConquestWall:
@@ -3717,14 +3760,19 @@ namespace Server.MirObjects
 
                             if (conquestWall == null) return;
 
-                            uint repairCost = (uint)conquestWall.GetRepairCost();
+                            if (player.IsGM)
+                            {
+                                conquestWall.Repair();
+                            }
+                            else
+                            {
+                                if (player.MyGuild == null || player.MyGuild.Gold < conquestWall.GetRepairCost()) return;
 
-                            if (player.MyGuild == null || player.MyGuild.Gold < repairCost) return;
+                                player.MyGuild.Gold -= (uint)conquestWall.GetRepairCost();
+                                player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = (uint)conquestWall.GetRepairCost() });
 
-                            player.MyGuild.Gold -= repairCost;
-                            player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = repairCost });
-
-                            conquestWall.Repair();
+                                conquestWall.Repair();
+                            }
                         }
                         break;
                     case ActionType.ConquestSiege:
@@ -3742,12 +3790,19 @@ namespace Server.MirObjects
                                 if (!conquestSiege.Gate.Dead) return;
                             }
 
-                            if (player.MyGuild == null || player.MyGuild.Gold < conquestSiege.GetRepairCost()) return;
+                            if (player.IsGM)
+                            {
+                                conquestSiege.Repair();
+                            }
+                            else
+                            {
+                                if (player.MyGuild == null || player.MyGuild.Gold < conquestSiege.GetRepairCost()) return;
 
-                            player.MyGuild.Gold -= (uint)conquestSiege.GetRepairCost();
-                            player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = (uint)conquestSiege.GetRepairCost() });
+                                player.MyGuild.Gold -= (uint)conquestSiege.GetRepairCost();
+                                player.MyGuild.SendServerPacket(new S.GuildStorageGoldChange() { Type = 2, Amount = (uint)conquestSiege.GetRepairCost() });
 
-                            conquestSiege.Repair();
+                                conquestSiege.Repair();
+                            } 
                         }
                         break;
                     case ActionType.TakeConquestGold:
@@ -3782,16 +3837,36 @@ namespace Server.MirObjects
                             if (!int.TryParse(param[0], out int tempInt)) return;
                             var conquest = Envir.Conquests.FirstOrDefault(z => z.Info.Index == tempInt);
                             if (conquest == null) return;
-                            ConquestGame tempGame;
-
-                            if (!ConquestGame.TryParse(param[1], out tempGame)) return;
 
                             if (!conquest.WarIsOn)
                             {
                                 conquest.StartType = ConquestType.Forced;
-                                conquest.GameType = tempGame;
-                                conquest.StartWar(tempGame);
+                                conquest.StartWar(conquest.GameType);
+
+                                MessageQueue.Enqueue(string.Format("{0} War Started.", conquest.Info.Name));
+
                             }
+                            else
+                            {
+                                conquest.WarIsOn = false;
+
+                                MessageQueue.Enqueue(string.Format("{0} War Stopped.", conquest.Info.Name));
+                            }
+
+                            foreach (var pl in Envir.Players)
+                            {
+                                if (conquest.WarIsOn)
+                                {
+                                    pl.ReceiveChat($"{conquest.Info.Name} War Started.", ChatType.System);
+                                }
+                                else
+                                {
+                                    pl.ReceiveChat($"{conquest.Info.Name} War Stopped.", ChatType.System);
+                                }
+
+                                pl.BroadcastInfo();
+                            }
+                                
                         }
                         break;
                     case ActionType.ScheduleConquest:
@@ -3996,7 +4071,7 @@ namespace Server.MirObjects
 
                                         if (drop.QuestRequired) continue;
 
-                                        if (player.CanGainItem(item, false))
+                                        if (player.CanGainItem(item))
                                         {
                                             player.GainItem(item);
                                         }
@@ -4011,6 +4086,85 @@ namespace Server.MirObjects
                     case ActionType.SealHero:
                         player.SealHero();
                         break;
+                    case ActionType.DeleteHero:
+                        player.DeleteHero();
+                        break;
+                    case ActionType.ConquestRepairAll:
+                        {
+                            if(!player.IsGM)
+                            {
+                                player.ReceiveChat($"You are not a GM and this command is not enabled for you.", ChatType.System);
+                                MessageQueue.Enqueue($"GM Command @CONQUESTREPAIRALL invoked by non-GM player: {player.Name}");
+                                return;
+                            }
+
+                            if (!int.TryParse(param[0], out int tempInt)) return;
+                            var conquest = Envir.Conquests.FirstOrDefault(z => z.Info.Index == tempInt);
+                            if (conquest == null) return;
+
+                            MessageQueue.Enqueue($"@CONQUESTREPAIRALL invoked by GM: {player.Name} on account index: {player.Info.AccountInfo.Index}");
+                            MessageQueue.Enqueue($"Conquest: {conquest.Info.Name}");
+
+                            if (conquest.Guild != null)
+                            {
+                                MessageQueue.Enqueue($"Owner: {conquest.Guild.Name}");
+                            }
+                            else
+                            {
+                                MessageQueue.Enqueue($"No current owner.");
+                            }
+
+                            int _fixed = 0;
+                            foreach (ConquestGuildArcherInfo archer in conquest.ArcherList)
+                            {
+                                if (archer.ArcherMonster != null &&
+                                    archer.ArcherMonster.Dead)
+                                {
+                                    archer.Spawn(true);
+                                    _fixed++;
+                                }
+                            }
+                            player.ReceiveChat($"Archers repaired: {_fixed}/{conquest.ArcherList.Count}", ChatType.System);
+                            MessageQueue.Enqueue($"Archers repaired: {_fixed}/{conquest.ArcherList.Count}");
+
+                            _fixed = 0;
+                            foreach (ConquestGuildGateInfo conquestGate in conquest.GateList)
+                            {
+                                if (conquestGate != null)
+                                {
+                                    conquestGate.Repair();
+                                    _fixed++;
+                                }
+                            }
+                            player.ReceiveChat($"Gates repaired: {_fixed}/{conquest.GateList.Count}", ChatType.System);
+                            MessageQueue.Enqueue($"Gates repaired: {_fixed}/{conquest.GateList.Count}");
+
+                            _fixed = 0;
+                            foreach (ConquestGuildWallInfo conquestWall in conquest.WallList)
+                            {
+                                if (conquestWall != null)
+                                {
+                                    conquestWall.Repair();
+                                    _fixed++;
+                                }
+                            }
+                            player.ReceiveChat($"Walls repaired: {_fixed}/{conquest.WallList.Count}", ChatType.System);
+                            MessageQueue.Enqueue($"Walls repaired: {_fixed}/{conquest.WallList.Count}");
+
+                            _fixed = 0;
+                            foreach (ConquestGuildSiegeInfo conquestSiege in conquest.SiegeList)
+                            {
+                                if (conquestSiege != null)
+                                {
+                                    conquestSiege.Repair();
+                                    _fixed++;
+                                }
+                            }
+                            player.ReceiveChat($"Sieges repaired: {_fixed}/{conquest.SiegeList.Count}", ChatType.System);
+                            MessageQueue.Enqueue($"Sieges repaired: {_fixed}/{conquest.SiegeList.Count}");
+
+                            break;
+                        }
                 }
             }
         }

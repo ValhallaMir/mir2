@@ -1,17 +1,12 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+﻿using System.Collections.Concurrent;
 using System.Net.Sockets;
 using Server.MirDatabase;
 using Server.MirEnvir;
 using Server.MirObjects;
 using C = ClientPackets;
 using S = ServerPackets;
-using System.Linq;
 using System.Text.RegularExpressions;
-using System.IO;
 using Server.Utils;
-using System.Collections;
 
 namespace Server.MirNetwork
 {
@@ -1150,7 +1145,7 @@ namespace Server.MirNetwork
         {
             if (Stage != GameStage.Game) return;
 
-            Player.DropItem(p.UniqueID, p.Count);
+            Player.DropItem(p.UniqueID, p.Count, p.HeroInventory);
         }
 
         private void TakeBackHeroItem(C.TakeBackHeroItem p)
@@ -1204,9 +1199,17 @@ namespace Server.MirNetwork
             if (Stage != GameStage.Game && Stage != GameStage.Observer) return;
 
             if (p.Ranking)
+            {
                 Envir.Inspect(this, (int)p.ObjectID);
+            }
+            else if (p.Hero)
+            {
+                Envir.InspectHero(this, (int)p.ObjectID);
+            }
             else
+            {
                 Envir.Inspect(this, p.ObjectID);
+            } 
         }
         private void Observe(C.Observe p)
         {
@@ -1362,7 +1365,7 @@ namespace Server.MirNetwork
             if (!actor.Dead && (actor.ActionTime > Envir.Time || actor.SpellTime > Envir.Time))
                 _retryList.Enqueue(p);
             else
-                actor.BeginMagic(p.Spell, p.Direction, p.TargetID, p.Location);
+                actor.BeginMagic(p.Spell, p.Direction, p.TargetID, p.Location, p.SpellTargetLock);
         }
 
         private void SwitchGroup(C.SwitchGroup p)
@@ -1916,7 +1919,7 @@ namespace Server.MirNetwork
         private void GameshopBuy(C.GameshopBuy p)
         {
             if (Stage != GameStage.Game) return;
-            Player.GameshopBuy(p.GIndex, p.Quantity);
+            Player.GameshopBuy(p.GIndex, p.Quantity, p.PType);
         }
 
         private void NPCConfirmInput(C.NPCConfirmInput p)
@@ -1924,6 +1927,12 @@ namespace Server.MirNetwork
             if (Stage != GameStage.Game) return;
 
             Player.NPCData["NPCInputStr"] = p.Value;
+
+            if (p.NPCID == Envir.DefaultNPC.LoadedObjectID && Player.NPCObjectID == Envir.DefaultNPC.LoadedObjectID)
+            {
+                Player.CallDefaultNPC(p.PageName);
+                return;
+            }
 
             Player.CallNPC(Player.NPCObjectID, p.PageName);
         }
@@ -2076,5 +2085,11 @@ namespace Server.MirNetwork
             Enqueue(new S.NewHeroInfo { Info = heroInfo.ClientInformation });
             SentHeroInfo.Add(item.UniqueID);
         }
+    }
+
+    public class MirConnectionLog {
+        public string IPAddress = "";
+        public List<long> AccountsMade = new List<long>();
+        public List<long> CharactersMade = new List<long>();
     }
 }

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 public class ItemInfo
 {
@@ -320,13 +316,15 @@ public class UserItem
 
     public int Weight
     {
-        get { return Info.Type == ItemType.Amulet ? Info.Weight : Info.Weight * Count; }
+        get { return (Info.Type == ItemType.Amulet || Info.Type == ItemType.Bait) ? Info.Weight : Info.Weight * Count; }
     }
 
     public string FriendlyName
     {
         get { return Count > 1 ? string.Format("{0} ({1})", Info.FriendlyName, Count) : Info.FriendlyName; }
     }
+
+    public bool GMMade { get; set; }
 
     public UserItem(ItemInfo info)
     {
@@ -452,6 +450,11 @@ public class UserItem
         {
             SealedInfo = new SealedInfo(reader, version, customVersion);
         }
+
+        if (version > 107)
+        {
+            GMMade = reader.ReadBoolean();
+        }
     }
 
     public void Save(BinaryWriter writer)
@@ -501,6 +504,8 @@ public class UserItem
 
         writer.Write(SealedInfo != null);
         SealedInfo?.Save(writer);
+
+        writer.Write(GMMade);
     }
 
     public int GetTotal(Stat type)
@@ -694,7 +699,8 @@ public class UserItem
             RentalInformation = RentalInformation,
             SealedInfo = SealedInfo,
 
-            IsShopItem = IsShopItem
+            IsShopItem = IsShopItem,
+            GMMade = GMMade
         };
 
         return item;
@@ -784,6 +790,8 @@ public class GameShopItem
     public bool Deal = false;
     public bool TopItem = false;
     public DateTime Date;
+    public bool CanBuyGold = false;
+    public bool CanBuyCredit = false;
 
     public GameShopItem()
     {
@@ -810,6 +818,12 @@ public class GameShopItem
         Deal = reader.ReadBoolean();
         TopItem = reader.ReadBoolean();
         Date = DateTime.FromBinary(reader.ReadInt64());
+        if (version > 105)
+        {
+            CanBuyGold = reader.ReadBoolean();
+            CanBuyCredit = reader.ReadBoolean();
+        }
+
     }
 
     public GameShopItem(BinaryReader reader, bool packet = false)
@@ -827,6 +841,8 @@ public class GameShopItem
         Deal = reader.ReadBoolean();
         TopItem = reader.ReadBoolean();
         Date = DateTime.FromBinary(reader.ReadInt64());
+        CanBuyCredit = reader.ReadBoolean();
+        CanBuyGold = reader.ReadBoolean();
     }
 
     public void Save(BinaryWriter writer, bool packet = false)
@@ -844,6 +860,8 @@ public class GameShopItem
         writer.Write(Deal);
         writer.Write(TopItem);
         writer.Write(Date.ToBinary());
+        writer.Write(CanBuyCredit);
+        writer.Write(CanBuyGold);
     }
 
     public override string ToString()

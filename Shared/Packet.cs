@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using C = ClientPackets;
+﻿using C = ClientPackets;
 using S = ServerPackets;
 
 public abstract class Packet
@@ -30,7 +27,13 @@ public abstract class Packet
                 short id = reader.ReadInt16();
 
                 p = IsServer ? GetClientPacket(id) : GetServerPacket(id);
-                if (p == null) return null;
+                if (p == null)
+                {
+                    //prevents server from getting stuck in a 'loop' (only on this connection)
+                    //if the incomming data is corrupt/invalid > simply remove all data instead of trying to process it over and over again
+                    extra = new byte[0];
+                    return null;
+                }
 
                 p.ReadPacket(reader);
             }

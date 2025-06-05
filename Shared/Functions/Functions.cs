@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Linq;
+﻿using System.Drawing;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Text.RegularExpressions;
 
 public static class Functions
 {
@@ -438,20 +433,52 @@ public static class Functions
     }
     public static byte[] SerializeToBytes<T>(T item)
     {
+#pragma warning disable SYSLIB0011
         var formatter = new BinaryFormatter();
         using (var stream = new MemoryStream())
         {
             formatter.Serialize(stream, item);
             stream.Seek(0, SeekOrigin.Begin);
+#pragma warning restore SYSLIB0011
             return stream.ToArray();
         }
     }
     public static object DeserializeFromBytes(byte[] bytes)
     {
+#pragma warning disable SYSLIB0011
         var formatter = new BinaryFormatter();
         using (var stream = new MemoryStream(bytes))
         {
-            return formatter.Deserialize(stream);
+            var deserialized = formatter.Deserialize(stream);
+#pragma warning restore SYSLIB0011
+            return deserialized;
         }
+    }
+
+    /// <summary>
+    /// Chop a List into chunks
+    /// </summary>
+    /// <param name="width">The amount of Chunks desired</param>
+    /// <param name="originalList">The list to Chop into Chunks</param>
+    /// <returns>Original List in Chunks within a List</returns>
+    public static List<List<T>> SplitList<T>(int width, List<T> originalList)
+    {
+        var _tempChunks = new List<List<T>>();
+
+        if (width == 0)
+            _tempChunks.Add(originalList);
+        else
+        {
+            // Determine how many lists are required 
+            var numberOfLists = (originalList.Count / width);
+
+            for (var i = 0; i <= numberOfLists; i++)
+            {
+                var newChunk = originalList.Skip(i * width).Take(width).ToList();
+                _tempChunks.Add(newChunk);
+            }
+        }
+
+        return _tempChunks;
     }
 }

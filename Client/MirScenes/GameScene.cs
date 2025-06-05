@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
-using System.Windows.Forms;
-using Client.MirControls;
+﻿using Client.MirControls;
 using Client.MirGraphics;
 using Client.MirNetwork;
 using Client.MirObjects;
@@ -17,10 +9,10 @@ using Font = System.Drawing.Font;
 using S = ServerPackets;
 using C = ClientPackets;
 using Effect = Client.MirObjects.Effect;
-
 using Client.MirScenes.Dialogs;
-using System.Drawing.Imaging;
 using Client.Utils;
+using static System.Net.Mime.MediaTypeNames;
+using Client.MirGraphics.Particles;
 
 namespace Client.MirScenes
 {
@@ -63,7 +55,7 @@ namespace Client.MirScenes
             }
         }
         public HeroSpawnState HeroSpawnState;
-
+        public List<ParticleEngine> ParticleEngines = new List<ParticleEngine>();
         public MapControl MapControl;
         public MainDialog MainDialog;
         public ChatDialog ChatDialog;
@@ -624,8 +616,9 @@ namespace Client.MirScenes
                         MailReadParcelDialog.Hide();
                         ItemRentalDialog.Hide();
                         NoticeDialog.Hide();
-
-
+                        HeroInventoryDialog?.Hide();
+                        HeroManageDialog?.Hide();
+                        HeroDialog?.Hide();
 
                         GameScene.Scene.DisposeItemLabel();
                         break;
@@ -713,6 +706,9 @@ namespace Client.MirScenes
                         return;
                     case KeybindOptions.PetmodeNone:
                         Network.Enqueue(new C.ChangePMode { Mode = PetMode.None });
+                        return;
+                    case KeybindOptions.PetmodeFocusMasterTarget:
+                        Network.Enqueue(new C.ChangePMode { Mode = PetMode.FocusMasterTarget });
                         return;
                     case KeybindOptions.CreatureAutoPickup://semiauto!
                         Network.Enqueue(new C.IntelligentCreaturePickup { MouseMode = false, Location = MapControl.MapLocation });
@@ -826,6 +822,9 @@ namespace Client.MirScenes
                     Network.Enqueue(new C.ChangePMode { Mode = PetMode.None });
                     return;
                 case PetMode.None:
+                    Network.Enqueue(new C.ChangePMode { Mode = PetMode.FocusMasterTarget });
+                    return;
+                case PetMode.FocusMasterTarget:
                     Network.Enqueue(new C.ChangePMode { Mode = PetMode.Both });
                     return;
             }
@@ -1182,6 +1181,9 @@ namespace Client.MirScenes
 
             foreach (SkillBarDialog Bar in Scene.SkillBarDialogs)
                 Bar.Process();
+
+            foreach (ParticleEngine pe in ParticleEngines)
+                pe.Process();
 
             DialogProcess();
 
@@ -1998,7 +2000,8 @@ namespace Client.MirScenes
         {
             if (MapControl != null && !MapControl.IsDisposed)
                 MapControl.Dispose();
-            MapControl = new MapControl { Index = p.MapIndex, FileName = Path.Combine(Settings.MapPath, p.FileName + ".map"), Title = p.Title, MiniMap = p.MiniMap, BigMap = p.BigMap, Lights = p.Lights, Lightning = p.Lightning, Fire = p.Fire, MapDarkLight = p.MapDarkLight, Music = p.Music };
+            MapControl = new MapControl { Index = p.MapIndex, FileName = Path.Combine(Settings.MapPath, p.FileName + ".map"), Title = p.Title, MiniMap = p.MiniMap, BigMap = p.BigMap, Lights = p.Lights, Lightning = p.Lightning, Fire = p.Fire, MapDarkLight = p.MapDarkLight, Music = p.Music};
+            MapControl.Weather = p.WeatherParticles;
             MapControl.LoadMap();
             InsertControl(0, MapControl);
         }
@@ -2545,8 +2548,6 @@ namespace Client.MirScenes
             MirItemCell fromCell;
             MirItemCell toCell;
 
-            int index = -1;
-
             switch (p.Grid)
             {
                 case MirGridType.Socket:
@@ -2814,7 +2815,16 @@ namespace Client.MirScenes
         }
         private void DropItem(S.DropItem p)
         {
-            MirItemCell cell = InventoryDialog.GetCell(p.UniqueID) ?? BeltDialog.GetCell(p.UniqueID);
+            MirItemCell cell;
+            if (p.HeroItem)
+            {
+                cell = HeroInventoryDialog.GetCell(p.UniqueID) ?? HeroBeltDialog.GetCell(p.UniqueID);
+            }
+            else
+            {
+                cell = InventoryDialog.GetCell(p.UniqueID) ?? BeltDialog.GetCell(p.UniqueID);
+            }
+            
 
             if (cell == null) return;
 
@@ -2827,7 +2837,15 @@ namespace Client.MirScenes
             else
                 cell.Item.Count -= p.Count;
 
-            User.RefreshStats();
+            if (p.HeroItem)
+            {
+                Hero.RefreshStats();
+            }
+            else
+            {
+                User.RefreshStats();
+            }
+            
         }
 
         private void TakeBackHeroItem(S.TakeBackHeroItem p)
@@ -3038,7 +3056,7 @@ namespace Client.MirScenes
             InspectDialog.LoverName = p.LoverName;
             InspectDialog.AllowObserve = p.AllowObserve;
 
-            InspectDialog.RefreshInferface();
+            InspectDialog.RefreshInferface(p.IsHero);
             InspectDialog.Show();
         }
         private void LogOutSuccess(S.LogOutSuccess p)
@@ -3134,6 +3152,9 @@ namespace Client.MirScenes
                     break;
                 case PetMode.None:
                     ChatDialog.ReceiveChat(GameLanguage.PetMode_None, ChatType.Hint);
+                    break;
+                case PetMode.FocusMasterTarget:
+                    ChatDialog.ReceiveChat(GameLanguage.PetMode_FocusMasterTarget, ChatType.Hint);
                     break;
             }
         }
@@ -3459,7 +3480,6 @@ namespace Client.MirScenes
 
             Hero.PercentHealth = (byte)(Hero.HP / (float)Hero.Stats[Stat.HP] * 100);
             Hero.PercentMana = (byte)(Hero.MP / (float)Hero.Stats[Stat.MP] * 100);
-            int g = 0;
         }
 
         private void DeleteQuestItem(S.DeleteQuestItem p)
@@ -3879,6 +3899,7 @@ namespace Client.MirScenes
                 MapControl.Lights = p.Lights;
                 MapControl.MapDarkLight = p.MapDarkLight;
                 MapControl.Music = p.Music;
+                MapControl.Weather = p.Weather;
                 MapControl.LoadMap();
             }
 
@@ -3899,6 +3920,8 @@ namespace Client.MirScenes
 
             MapControl.FloorValid = false;
             MapControl.InputDelay = CMain.Time + 400;
+
+            MapControl.UpdateWeather();
         }
         private void ObjectTeleportOut(S.ObjectTeleportOut p)
         {
@@ -4085,6 +4108,11 @@ namespace Client.MirScenes
                         }
                 }
 
+                if (p.ObjectID == User.ObjectID)
+                {
+                    User.TargetID = User.LastTargetObjectId;
+                }
+
                 if (playDefaultSound)
                 {
                     SoundManager.PlaySound(SoundList.Teleport);
@@ -4115,19 +4143,39 @@ namespace Client.MirScenes
             {
                 case PanelType.Buy:
                     NPCGoodsDialog.UsePearls = false;
-                    NPCGoodsDialog.NewGoods(p.List);
-                    NPCGoodsDialog.Show();
+
+                    if (p.Progress == 1)
+                        NPCGoodsDialog.NewGoods(p.List);
+                    else
+                        NPCGoodsDialog.AddGoods(p.List);
+
+                    if (p.Progress == 3)
+                        NPCGoodsDialog.Show();
                     break;
                 case PanelType.BuySub:
                     NPCSubGoodsDialog.UsePearls = false;
-                    NPCSubGoodsDialog.NewGoods(p.List);
-                    NPCSubGoodsDialog.Show();
+
+                    if (p.Progress == 1)
+                        NPCSubGoodsDialog.NewGoods(p.List);
+                    else
+                        NPCSubGoodsDialog.AddGoods(p.List);
+
+                    if (p.Progress == 3)
+                        NPCSubGoodsDialog.Show();
                     break;
                 case PanelType.Craft:
                     NPCCraftGoodsDialog.UsePearls = false;
-                    NPCCraftGoodsDialog.NewGoods(p.List);
-                    NPCCraftGoodsDialog.Show();
-                    CraftDialog.Show();
+
+                    if (p.Progress == 1)
+                        NPCCraftGoodsDialog.NewGoods(p.List);
+                    else
+                        NPCCraftGoodsDialog.AddGoods(p.List);
+
+                    if (p.Progress == 3)
+                    {
+                        NPCCraftGoodsDialog.Show();
+                        CraftDialog.Show();
+                    }
                     break;
             }
         }
@@ -4627,7 +4675,6 @@ namespace Client.MirScenes
                 MapObject ob = MapControl.Objects[i];
                 if (ob.ObjectID != p.ObjectID) continue;
                 PlayerObject player;
-                MonsterObject monster;
 
                 switch (p.Effect)
                 {
@@ -4832,6 +4879,9 @@ namespace Client.MirScenes
                         break;
                     case SpellEffect.DeathCrawlerBreath:
                         ob.Effects.Add(new Effect(Libraries.Monsters[(ushort)Monster.DeathCrawler], 272 + ((int)ob.Direction * 4), 4, 400, ob) { Blend = true });
+                        break;
+                    case SpellEffect.MoonMist:
+                        ob.Effects.Add(new Effect(Libraries.Magic3, 705, 10, 800, ob));
                         break;
                 }
 
@@ -5067,7 +5117,8 @@ namespace Client.MirScenes
 
         private void ObjectRangeAttack(S.ObjectRangeAttack p)
         {
-            if (p.ObjectID == User.ObjectID) return;
+            if (p.ObjectID == User.ObjectID &&
+                !Observing) return;
 
             for (int i = MapControl.Objects.Count - 1; i >= 0; i--)
             {
@@ -5555,7 +5606,7 @@ namespace Client.MirScenes
         {
             for (int i = MapControl.Objects.Count - 1; i >= 0; i--)
             {
-                if (MapControl.Objects[i].Race != ObjectType.Player) continue;
+                if (MapControl.Objects[i].Race != ObjectType.Player && MapControl.Objects[i].Race != ObjectType.Hero) continue;
 
                 PlayerObject ob = MapControl.Objects[i] as PlayerObject;
                 if (ob.ObjectID != p.ObjectID) continue;
@@ -5581,7 +5632,7 @@ namespace Client.MirScenes
         {
             for (int i = MapControl.Objects.Count - 1; i >= 0; i--)
             {
-                if (MapControl.Objects[i].Race != ObjectType.Player) continue;
+                if (MapControl.Objects[i].Race != ObjectType.Player && MapControl.Objects[i].Race != ObjectType.Hero) continue;
 
                 PlayerObject ob = MapControl.Objects[i] as PlayerObject;
                 if (ob.ObjectID != p.ObjectID) continue;
@@ -8172,6 +8223,101 @@ namespace Client.MirScenes
 
             #endregion
 
+            #region MAX_DC_RATE
+
+            minValue = realItem.Stats[Stat.MaxDCRatePercent];
+            maxValue = 0;
+            addValue = 0;
+
+            if (minValue > 0 || maxValue > 0 || addValue > 0)
+            {
+                count++;
+                MirLabel MAXDCRATE = new MirLabel
+                {
+                    AutoSize = true,
+                    ForeColour = addValue > 0 ? Color.Cyan : Color.White,
+                    Location = new Point(4, ItemLabel.DisplayRectangle.Bottom),
+                    OutLine = true,
+                    Parent = ItemLabel,
+                    Text = string.Format("Max DC + {0}%", minValue + addValue)
+                };
+
+                ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, MAXDCRATE.DisplayRectangle.Right + 4),
+                    Math.Max(ItemLabel.Size.Height, MAXDCRATE.DisplayRectangle.Bottom));
+            }
+            #endregion
+
+            #region MAX_MC_RATE
+
+            minValue = realItem.Stats[Stat.MaxMCRatePercent];
+            maxValue = 0;
+            addValue = 0;
+
+            if (minValue > 0 || maxValue > 0 || addValue > 0)
+            {
+                count++;
+                MirLabel MAXMCRATE = new MirLabel
+                {
+                    AutoSize = true,
+                    ForeColour = addValue > 0 ? Color.Cyan : Color.White,
+                    Location = new Point(4, ItemLabel.DisplayRectangle.Bottom),
+                    OutLine = true,
+                    Parent = ItemLabel,
+                    Text = string.Format("Max MC + {0}%", minValue + addValue)
+                };
+
+                ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, MAXMCRATE.DisplayRectangle.Right + 4),
+                    Math.Max(ItemLabel.Size.Height, MAXMCRATE.DisplayRectangle.Bottom));
+            }
+            #endregion
+
+            #region MAX_SC_RATE
+
+            minValue = realItem.Stats[Stat.MaxSCRatePercent];
+            maxValue = 0;
+            addValue = 0;
+
+            if (minValue > 0 || maxValue > 0 || addValue > 0)
+            {
+                count++;
+                MirLabel MAXSCRATE = new MirLabel
+                {
+                    AutoSize = true,
+                    ForeColour = addValue > 0 ? Color.Cyan : Color.White,
+                    Location = new Point(4, ItemLabel.DisplayRectangle.Bottom),
+                    OutLine = true,
+                    Parent = ItemLabel,
+                    Text = string.Format("Max SC + {0}%", minValue + addValue)
+                };
+
+                ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, MAXSCRATE.DisplayRectangle.Right + 4),
+                    Math.Max(ItemLabel.Size.Height, MAXSCRATE.DisplayRectangle.Bottom));
+            }
+            #endregion
+
+            #region DAMAGE_REDUCTION
+
+            minValue = realItem.Stats[Stat.DamageReductionPercent];
+            maxValue = 0;
+            addValue = 0;
+
+            if (minValue > 0 || maxValue > 0 || addValue > 0)
+            {
+                count++;
+                MirLabel DAMAGEREDUC = new MirLabel
+                {
+                    AutoSize = true,
+                    ForeColour = addValue > 0 ? Color.Cyan : Color.White,
+                    Location = new Point(4, ItemLabel.DisplayRectangle.Bottom),
+                    OutLine = true,
+                    Parent = ItemLabel,
+                    Text = string.Format("All Damage Reduction + {0}%", minValue + addValue)
+                };
+
+                ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, DAMAGEREDUC.DisplayRectangle.Right + 4),
+                    Math.Max(ItemLabel.Size.Height, DAMAGEREDUC.DisplayRectangle.Bottom));
+            }
+            #endregion
             if (count > 0)
             {
                 ItemLabel.Size = new Size(ItemLabel.Size.Width, ItemLabel.Size.Height + 4);
@@ -8701,6 +8847,32 @@ namespace Client.MirScenes
                 ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, CLASSLabel.DisplayRectangle.Right + 4),
                     Math.Max(ItemLabel.Size.Height, CLASSLabel.DisplayRectangle.Bottom));
             }
+
+            #endregion
+
+            #region BUYING - SELLING PRICE
+            if (item.Price() > 0)
+            {
+                count++;
+                string text;
+                var colour = Color.White;
+
+                text = $"Selling Price : {((long)(item.Price() / 2)).ToString("###,###,##0")} Gold";
+
+                var costLabel = new MirLabel
+                {
+                    AutoSize = true,
+                    ForeColour = colour,
+                    Location = new Point(4, ItemLabel.DisplayRectangle.Bottom),
+                    OutLine = true,
+                    Parent = ItemLabel,
+                    Text = text
+                };
+
+                ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, costLabel.DisplayRectangle.Right + 4),
+                    Math.Max(ItemLabel.Size.Height, costLabel.DisplayRectangle.Bottom));
+            }
+
 
             #endregion
 
@@ -9448,14 +9620,22 @@ namespace Client.MirScenes
                 switch (realItem.Shape)
                 {
                     case 1:
-                        text = "Hold CTRL and left click to repair weapons.";
+                        text = "Hold CTRL and left click to partially repair\nweapons and accessory items.";
                         break;
                     case 2:
-                        text = "Hold CTRL and left click to repair armour\nand accessory items.";
+                        text = "Hold CTRL and left click to partially repair\narmour and drapery items.";
                         break;
                     case 3:
+                        text = "Hold CTRL and left click to combine with an item.\nHas chance to destroy combining item.";
+                        break;
                     case 4:
-                        text = "Hold CTRL and left click to combine with an item.";
+                        text = "Hold CTRL and left click to combine with an item.\nWill NOT destroy combining item.";
+                        break;
+                    case 5:
+                        text = "Hold CTRL and left click to completely repair\nweapons and accessory items.";
+                        break;
+                    case 6:
+                        text = "Hold CTRL and left click to completely repair\narmour and drapery items.";
                         break;
                     case 8:
                         text = "Hold CTRL and left click to seal an item.";
@@ -9603,6 +9783,47 @@ namespace Client.MirScenes
             return null;
         }
 
+        public MirControl GMMadeLabel(UserItem item)
+        {
+            if (item.GMMade)
+            {
+
+
+                ItemLabel.Size = new Size(ItemLabel.Size.Width, ItemLabel.Size.Height + 4);
+
+                MirLabel GMLabel = new MirLabel
+                {
+                    AutoSize = true,
+                    ForeColour = Color.Orchid,
+                    Location = new Point(4, ItemLabel.DisplayRectangle.Bottom),
+                    OutLine = true,
+                    Parent = ItemLabel,
+                    Text = "Created by Game Master"
+                };
+
+                ItemLabel.Size = new Size(Math.Max(ItemLabel.Size.Width, GMLabel.DisplayRectangle.Right + 4),
+                    Math.Max(ItemLabel.Size.Height + 4, GMLabel.DisplayRectangle.Bottom + 4));
+
+                MirControl outLine = new MirControl
+                {
+                    BackColour = Color.FromArgb(255, 50, 50, 50),
+                    Border = true,
+                    BorderColour = Color.Gray,
+                    NotControl = true,
+                    Parent = ItemLabel,
+                    Opacity = 0.4F,
+                    Location = new Point(0, 0)
+                };
+                outLine.Size = ItemLabel.Size;
+
+                return outLine;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
         public void CreateItemLabel(UserItem item, bool inspect = false, bool hideDura = false, bool hideAdded = false)
         {
             CMain.DebugText = CMain.Random.Next(1, 100).ToString();
@@ -9636,7 +9857,7 @@ namespace Client.MirScenes
             };
 
             //Name Info Label
-            MirControl[] outlines = new MirControl[10];
+            MirControl[] outlines = new MirControl[11];
             outlines[0] = NameInfoLabel(item, inspect, hideDura);
             //Attribute Info1 Label - Attack Info
             outlines[1] = AttackInfoLabel(item, inspect, hideAdded);
@@ -9656,6 +9877,8 @@ namespace Client.MirScenes
             outlines[8] = OverlapInfoLabel(item, inspect);
             //Story Label
             outlines[9] = StoryInfoLabel(item, inspect);
+            //GM Made
+            outlines[10] = GMMadeLabel(item);
 
             foreach (var outline in outlines)
             {
@@ -10159,7 +10382,7 @@ namespace Client.MirScenes
         public bool Lightning, Fire;
         public byte MapDarkLight;
         public long LightningTime, FireTime;
-
+        public WeatherSetting Weather = WeatherSetting.None;
         public bool FloorValid, LightsValid;
 
         public long OutputDelay;
@@ -10219,7 +10442,6 @@ namespace Client.MirScenes
 
             MapObject.MouseObjectID = 0;
             MapObject.TargetObjectID = 0;
-            MapObject.TargetObjectID = 0;
             MapObject.MagicObjectID = 0;
 
             if (M2CellInfo != null)
@@ -10260,11 +10482,7 @@ namespace Client.MirScenes
             {
                 if (SetMusic != Music)
                 {
-                    if (SoundManager.Music != null)
-                    {
-                        SoundManager.Music.Dispose();
-                    }
-
+                    SoundManager.Music?.Dispose();
                     SoundManager.PlayMusic(Music, true);
                 }
             }
@@ -10275,6 +10493,8 @@ namespace Client.MirScenes
 
             SetMusic = Music;
             SoundList.Music = Music;
+
+            UpdateWeather();
         }
 
 
@@ -10395,6 +10615,12 @@ namespace Client.MirScenes
             }
 
             DrawObjects();
+
+            //render weather
+            foreach (ParticleEngine engine in GameScene.Scene.ParticleEngines)
+            {
+                engine.Draw();
+            }
 
             //Render Death, 
 
@@ -11014,6 +11240,9 @@ namespace Client.MirScenes
                     if (x < 0) continue;
                     if (x >= Width) break;
                     int imageIndex = (M2CellInfo[x, y].FrontImage & 0x7FFF) - 1;
+                    if (imageIndex == -1) continue;
+                    int fileIndex = M2CellInfo[x, y].FrontIndex;
+                    if (fileIndex == -1) continue;
                     if (M2CellInfo[x, y].Light <= 0 || M2CellInfo[x, y].Light >= 10) continue;
                     if (M2CellInfo[x, y].Light == 0) continue;
 
@@ -11044,8 +11273,6 @@ namespace Client.MirScenes
                     {
                         lightIntensity = GetBlindLight(lightIntensity);
                     }
-
-                    int fileIndex = M2CellInfo[x, y].FrontIndex;
 
                     p = new Point(
                         (x + OffSetX - MapObject.User.Movement.X) * CellWidth + MapObject.User.OffSetMove.X,
@@ -11127,13 +11354,33 @@ namespace Client.MirScenes
                             }
                             return;
                         }
-                        PlayerObject player = MapObject.MouseObject as PlayerObject;
-                        if (player == null || player == User || !CMain.Ctrl) return;
-                        if (CMain.Time <= GameScene.InspectTime && player.ObjectID == InspectDialog.InspectID) return;
 
-                        GameScene.InspectTime = CMain.Time + 500;
-                        InspectDialog.InspectID = player.ObjectID;
-                        Network.Enqueue(new C.Inspect { ObjectID = player.ObjectID });
+                        if (CMain.Ctrl)
+                        {
+                            HeroObject hero = MapObject.MouseObject as HeroObject;
+
+                            if (hero != null &&
+                                hero.ObjectID != (Hero is null ? 0 : Hero.ObjectID) &&
+                                CMain.Time >= GameScene.InspectTime)
+                            {
+                                GameScene.InspectTime = CMain.Time + 500;
+                                InspectDialog.InspectID = hero.ObjectID;
+                                Network.Enqueue(new C.Inspect { ObjectID = hero.ObjectID, Hero = true });
+                                return;
+                            }
+
+                            PlayerObject player = MapObject.MouseObject as PlayerObject;
+
+                            if (player != null &&
+                                player != User &&
+                                CMain.Time >= GameScene.InspectTime)
+                            {
+                                GameScene.InspectTime = CMain.Time + 500;
+                                InspectDialog.InspectID = player.ObjectID;
+                                Network.Enqueue(new C.Inspect { ObjectID = player.ObjectID });
+                                return;
+                            }
+                        }
                     }
                     break;
                 case MouseButtons.Middle:
@@ -11154,11 +11401,11 @@ namespace Client.MirScenes
 
             if (GameScene.SelectedCell != null)
             {
-                if (GameScene.SelectedCell.GridType != MirGridType.Inventory)
-                {
-                    GameScene.SelectedCell = null;
-                    return;
-                }
+                //if (GameScene.SelectedCell.GridType != MirGridType.Inventory)
+                //{
+                //    GameScene.SelectedCell = null;
+                //    return;
+                //}
 
                 MirItemCell cell = GameScene.SelectedCell;
                 if (cell.Item.Info.Bind.HasFlag(BindMode.DontDrop))
@@ -11174,8 +11421,12 @@ namespace Client.MirScenes
 
                     messageBox.YesButton.Click += (o, a) =>
                     {
-                        Network.Enqueue(new C.DropItem { UniqueID = cell.Item.UniqueID, Count = 1 });
-
+                        Network.Enqueue(new C.DropItem 
+                        {   UniqueID = cell.Item.UniqueID, 
+                            Count = 1,
+                            HeroInventory = cell.GridType == MirGridType.HeroInventory
+                        });
+                        
                         cell.Locked = true;
                     };
                     messageBox.Show();
@@ -11190,7 +11441,8 @@ namespace Client.MirScenes
                         Network.Enqueue(new C.DropItem
                         {
                             UniqueID = cell.Item.UniqueID,
-                            Count = (ushort)amountBox.Amount
+                            Count = (ushort)amountBox.Amount,
+                            HeroInventory = cell.GridType == MirGridType.HeroInventory
                         });
 
                         cell.Locked = true;
@@ -11659,6 +11911,19 @@ namespace Client.MirScenes
                     if (target == null) target = MapObject.MagicObject;
 
                     if (target != null && target.Race == ObjectType.Monster) MapObject.MagicObjectID = target.ObjectID;
+                    break;
+                case Spell.Stonetrap:
+                    if (!User.HasClassWeapon)
+                    {
+                        GameScene.Scene.OutputMessage("You must be wearing a bow to perform this skill.");
+                        User.ClearMagic();
+                        return;
+                    }
+                    if (User.NextMagicObject != null)
+                    {
+                        if (!User.NextMagicObject.Dead && User.NextMagicObject.Race != ObjectType.Item && User.NextMagicObject.Race != ObjectType.Merchant)
+                            target = User.NextMagicObject;
+                    }
 
                     //if(magic.Spell == Spell.ElementalShot)
                     //{
@@ -11692,6 +11957,8 @@ namespace Client.MirScenes
                 case Spell.MassHiding:
                 case Spell.FireWall:
                 case Spell.TrapHexagon:
+                case Spell.HealingCircle:
+                case Spell.CatTongue:
                     if (actor.NextMagicObject != null)
                     {
                         if (!actor.NextMagicObject.Dead && actor.NextMagicObject.Race != ObjectType.Item && actor.NextMagicObject.Race != ObjectType.Merchant)
@@ -11774,7 +12041,7 @@ namespace Client.MirScenes
             }
             else
             {
-                Network.Enqueue(new C.Magic { ObjectID = actor.ObjectID, Spell = magic.Spell, Direction = dir, TargetID = targetID, Location = location });
+                Network.Enqueue(new C.Magic { ObjectID = actor.ObjectID, Spell = magic.Spell, Direction = dir, TargetID = targetID, Location = location, SpellTargetLock = CMain.SpellTargetLock });
             }
         }
 
@@ -11890,7 +12157,7 @@ namespace Client.MirScenes
             {
                 if (CMain.Time > _doorTime)
                 {
-                   _doorTime = CMain.Time + 4000;
+                    _doorTime = CMain.Time + 4000;
                     Network.Enqueue(new C.Opendoor() { DoorIndex = DoorInfo.index });
                 }
 
@@ -12045,7 +12312,177 @@ namespace Client.MirScenes
 
         #endregion
 
+        public void UpdateWeather()
+        {
+            for (int i = GameScene.Scene.ParticleEngines.Count - 1; i > 0; i--)
+                GameScene.Scene.ParticleEngines[i].Dispose();
 
+            GameScene.Scene.ParticleEngines.Clear();
+            List<ParticleImageInfo> textures = new List<ParticleImageInfo>();
+            foreach (WeatherSetting itemWeather in Enum.GetValues(typeof(WeatherSetting)).Cast<object>().ToArray())
+            {
+                //if not enabled skip
+                if ((Weather & itemWeather) != itemWeather)
+                    continue;
+
+            //foreach (WeatherSetting itemWeather in Weather)
+            //{
+                switch (itemWeather)
+                {
+                    case WeatherSetting.Leaves:
+                        textures = new List<ParticleImageInfo>();
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 359, 170, 50));
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 531, 55, 50));
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 587, 200, 50));
+
+
+                        ParticleEngine LeavesEngine2 = new ParticleEngine(textures, new Vector2(2f, 0), ParticleType.Leaves);
+                        Vector2 lVelocity = new Vector2(0F, 0F);
+                        for (int y = 512 * -1; y < Settings.ScreenHeight + 512; y += 512)
+                            for (int x = 512 * -1; x < Settings.ScreenWidth + 512; x += 512)
+                            {
+                                Particle part = LeavesEngine2.GenerateNewParticle(ParticleType.Leaves);
+                                part.Position = new Vector2(x, y);
+                                part.Velocity = lVelocity;
+                            }
+                        LeavesEngine2.GenerateParticles = false;
+                        GameScene.Scene.ParticleEngines.Add(LeavesEngine2);
+                        break;
+                    case WeatherSetting.FireyLeaves:
+                        textures = new List<ParticleImageInfo>();
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 359, 170, 50));
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 531, 55, 50));
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 587, 200, 50));
+
+
+                        ParticleEngine FLeavesEngine2 = new ParticleEngine(textures, new Vector2(2f, 0), ParticleType.FireyLeaves);
+                        Vector2 FlVelocity = new Vector2(0F, 0F);
+                        for (int y = 512 * -1; y < Settings.ScreenHeight + 512; y += 512)
+                            for (int x = 512 * -1; x < Settings.ScreenWidth + 512; x += 512)
+                            {
+                                Particle part = FLeavesEngine2.GenerateNewParticle(ParticleType.FireyLeaves);
+                                part.Position = new Vector2(x, y);
+                                part.Velocity = FlVelocity;
+                            }
+                        FLeavesEngine2.GenerateParticles = false;
+                        GameScene.Scene.ParticleEngines.Add(FLeavesEngine2);
+                        break;
+                    case WeatherSetting.Rain:
+                        textures = new List<ParticleImageInfo>();
+                        //Rain
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 164, 150, 50));
+
+
+                        ParticleEngine RainEngine2 = new ParticleEngine(textures, new Vector2(2f, 0), ParticleType.Rain);
+                        Vector2 rsevelocity = new Vector2(0F, 0F);
+                        var xVar = 512;
+                        var yVar = 512;
+                        for (int y = yVar * -1; y < Settings.ScreenHeight + yVar; y += yVar)
+                            for (int x = xVar * -1; x < Settings.ScreenWidth + xVar; x += xVar)
+                            {
+                                Particle part = RainEngine2.GenerateNewParticle(ParticleType.Rain);
+                                part.Position = new Vector2(x, y);
+                                part.Velocity = rsevelocity;
+                            }
+                        RainEngine2.GenerateParticles = false;
+                        GameScene.Scene.ParticleEngines.Add(RainEngine2);
+                        break;
+
+                    case WeatherSetting.Snow:
+                        textures = new List<ParticleImageInfo>();
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 43, 20, 50));
+
+                        ParticleEngine RainEngine = new ParticleEngine(textures, new Vector2(0, 0), ParticleType.Snow);
+                        Vector2 rsvelocity = new Vector2(1F, -1F);
+
+                        for (int y = -400; y < Settings.ScreenHeight + 400; y += 400)
+                            for (int x = -400; x < Settings.ScreenWidth + 400; x += 400)
+                            {
+                                Particle part = RainEngine.GenerateNewParticle(ParticleType.Snow);
+                                part.Position = new Vector2(x, y);
+                                part.Velocity = rsvelocity;
+                            }
+                        RainEngine.GenerateParticles = false;
+                        GameScene.Scene.ParticleEngines.Add(RainEngine);
+
+                        break;
+                    case WeatherSetting.Fog:
+                        List<ParticleImageInfo> ftextures = new List<ParticleImageInfo>();
+                        ftextures.Add(new ParticleImageInfo(Libraries.Weather, 0));
+                        ParticleEngine fengine = new ParticleEngine(ftextures, new Vector2(0, 0), ParticleType.Fog);
+                        fengine.UpdateDelay = TimeSpan.FromMilliseconds(20);
+
+                        Vector2 fvelocity = new Vector2(2F, -2F);
+                        for (int y = -512; y < Settings.ScreenHeight + 512; y += 512)
+                            for (int x = -512; x < Settings.ScreenWidth + 512; x += 512)
+                            {
+                                Particle part = fengine.GenerateNewParticle(ParticleType.Fog);
+                                part.Position = new Vector2(x, y);
+                                part.Velocity = fvelocity;
+                            }
+
+
+                        fengine.GenerateParticles = false;
+                        GameScene.Scene.ParticleEngines.Add(fengine);
+                        break;
+                    case WeatherSetting.RedEmber:
+                        var rtextures = new List<ParticleImageInfo>();
+                        rtextures.Add(new ParticleImageInfo(Libraries.Weather, 1, 9, 150));
+
+                        var rengine = new ParticleEngine(rtextures, new Vector2(0, 0), ParticleType.RedFogEmber);
+                        GameScene.Scene.ParticleEngines.Add(rengine);
+                        break;
+                    case WeatherSetting.WhiteEmber:
+
+                        textures = new List<ParticleImageInfo>();
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 1, 9, 150));
+                        var whiteEmberEngine = new ParticleEngine(textures, new Vector2(0, 0), ParticleType.WhiteEmber);
+                        GameScene.Scene.ParticleEngines.Add(whiteEmberEngine);
+                        break;
+                    case WeatherSetting.PurpleLeaves:
+
+                        textures = new List<ParticleImageInfo>();
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 359, 170, 50));
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 531, 55, 50));
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 587, 200, 50));
+                        //textures.Add(new ParticleImageInfo(Libraries.Weather, 10, 20, 50));
+
+                        var pEmberEngine = new ParticleEngine(textures, new Vector2(0, 0), ParticleType.PurpleLeaves);
+
+                        for (int y = 512 * -1; y < Settings.ScreenHeight + 512; y += 512)
+                            for (int x = 512 * -1; x < Settings.ScreenWidth + 512; x += 512)
+                            {
+                                Particle part = pEmberEngine.GenerateNewParticle(ParticleType.PurpleLeaves);
+                                part.Position = new Vector2(x, y);
+                                part.Velocity = new Vector2(0, 0);
+                            }
+                        pEmberEngine.GenerateParticles = false;
+                        GameScene.Scene.ParticleEngines.Add(pEmberEngine);
+                        break;
+
+                    case WeatherSetting.YellowEmber:
+
+                        textures = new List<ParticleImageInfo>();
+                        textures.Add(new ParticleImageInfo(Libraries.Weather, 1, 9, 100));
+
+                        var yellowEmberEngine = new ParticleEngine(textures, new Vector2(0, 0), ParticleType.YellowEmber);
+                        GameScene.Scene.ParticleEngines.Add(yellowEmberEngine);
+                        break;
+                    case WeatherSetting.FireParticle:
+
+                        textures = new List<ParticleImageInfo>();
+                        //textures.Add(new ParticleImageInfo(Libraries.StateEffect, 640)); << TODO - Win
+                        //   textures.Add(new ParticleImageInfo(Libraries.Prguse4, 642));
+                        var fEmberEngine = new ParticleEngine(textures, new Vector2(0, 0), ParticleType.Bird);
+                        GameScene.Scene.ParticleEngines.Add(fEmberEngine);
+                        break;
+
+
+                }
+
+            }
+            
+        }
 
         public void RemoveObject(MapObject ob)
         {
